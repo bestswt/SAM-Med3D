@@ -69,7 +69,7 @@ for dataset in dataset_list:
     print("num_classes:", num_classes, meta_info["labels"])
     resample_dir = osp.join(dataset_dir, "imagesTr_1.5")
     os.makedirs(resample_dir, exist_ok=True)
-    for idx, cls_name in meta_info["labels"].items():
+    for cls_name, idx in meta_info["labels"].items():
         cls_name = cls_name.replace(" ", "_")
         idx = int(idx)
         dataset_name = dataset.split("_", maxsplit=1)[1]
