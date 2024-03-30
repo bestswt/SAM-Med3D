@@ -16,6 +16,7 @@ from tqdm import tqdm
 import torchio as tio
 
 
+
 def resample_nii(input_path: str, output_path: str, target_spacing: tuple = (1.5, 1.5, 1.5), n=None,
                  reference_image=None, mode="linear"):
     """
@@ -62,6 +63,20 @@ target_dir = "/scratch/prj/inf_clinicalllm_msc/wentao_shi/SAM/SAM-Med3D/data/Dat
 
 for dataset in dataset_list:
     dataset_dir = osp.join(dataset_root, dataset)
+    training = []
+    image_files = os.listdir(os.path.join(dataset_dir, "imagesTr"))
+
+    for image_file in image_files:
+        # Construct full path to image file
+        image_path = os.path.join(dataset_dir, "imagesTr", image_file)
+
+        # Construct corresponding label file path
+        label_file = image_file  # Assuming label files have the same name as image files
+        label_path = os.path.join(dataset_dir, "labelsTr", label_file)
+
+        # Append to training list
+        training.append({"image": image_path, "label": label_path})
+
     meta_info = json.load(open(osp.join(dataset_dir, "dataset.json")))
 
     print(meta_info['name'], meta_info['channel_names'])
@@ -78,7 +93,7 @@ for dataset in dataset_list:
         target_gt_dir = osp.join(target_cls_dir, "labelsTr")
         os.makedirs(target_img_dir, exist_ok=True)
         os.makedirs(target_gt_dir, exist_ok=True)
-        for item in tqdm(meta_info["training"], desc=f"{dataset_name}-{cls_name}"):
+        for item in tqdm(training, desc=f"{dataset_name}-{cls_name}"):
             img, gt = item["image"], item["label"]
             img = osp.join(dataset_dir, img.replace(".nii.gz", "_0000.nii.gz"))
             gt = osp.join(dataset_dir, gt)
