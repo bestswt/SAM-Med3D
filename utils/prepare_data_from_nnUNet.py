@@ -64,7 +64,7 @@ for dataset in dataset_list:
     dataset_dir = osp.join(dataset_root, dataset)
     meta_info = json.load(open(osp.join(dataset_dir, "dataset.json")))
 
-    print(meta_info['name'], meta_info['modality'])
+    print(meta_info['name'], meta_info['channel_names'])
     num_classes = len(meta_info["labels"]) - 1
     print("num_classes:", num_classes, meta_info["labels"])
     resample_dir = osp.join(dataset_dir, "imagesTr_1.5")
