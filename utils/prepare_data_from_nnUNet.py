@@ -96,7 +96,7 @@ for dataset in dataset_list:
         for item in tqdm(training, desc=f"{dataset_name}-{cls_name}"):
             img, gt = item["image"], item["label"]
             # img = osp.join(dataset_dir, img.replace(".nii.gz", "_0000.nii.gz"))
-            gt = osp.join(dataset_dir, gt)
+            gt = osp.join(dataset_dir, gt.replace(".nii.gz", "_0000.nii.gz"))
             resample_img = osp.join(resample_dir, osp.basename(img))
             if not osp.exists(resample_img):
                 resample_nii(img, resample_img)
