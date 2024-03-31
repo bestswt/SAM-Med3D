@@ -19,7 +19,7 @@ from collections import OrderedDict, defaultdict
 import json
 import pickle
 from utils.click_method import get_next_click3D_torch_ritm, get_next_click3D_torch_2
-from utils.data_loader import Dataset_Union_ALL_Val
+from utils.data_loader import Dataset_Union_ALL
 from utils.data_paths import all_classes, all_classes_merged
 
 parser = argparse.ArgumentParser()
@@ -308,7 +308,7 @@ if __name__ == "__main__":
         tio.CropOrPad(mask_name='label', target_shape=(args.crop_size, args.crop_size, args.crop_size)),
     ]
 
-    test_dataset = Dataset_Union_ALL_Val(
+    test_dataset = Dataset_Union_ALL(
         paths=all_dataset_paths,
         all_classes=all_classes,
         mode="Val",
