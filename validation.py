@@ -300,6 +300,7 @@ def finetune_model_predict3D(img3D, gt3D, sam_model_tune, device='cuda', click_m
 
 if __name__ == "__main__":
     all_dataset_paths = args.test_data_path
+    print("all_dataset_paths:", all_dataset_paths)
 
     infer_transform = [
         tio.ToCanonical(),
