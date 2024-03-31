@@ -1,22 +1,26 @@
+import torch
+
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import torchio as tio
-import torch
 import numpy as np
 import os
-import torch
-import SimpleITK as sitk
+import nibabel as nib
 from prefetch_generator import BackgroundGenerator
+from tqdm import tqdm
+# from data_paths import all_classes_merged, all_classes
 
 
-class Dataset_Union_ALL(Dataset): 
-    def __init__(self, paths, mode='train', data_type='Tr', image_size=128, 
+class Dataset_Union_ALL(Dataset):
+    def __init__(self, paths, all_classes, mode='train', data_type='Tr', image_size=128,
                  transform=None, threshold=500,
                  split_num=1, split_idx=0, pcc=False):
         self.paths = paths
         self.data_type = data_type
-        self.split_num=split_num
-        self.split_idx=split_idx
+        self.split_num = split_num
+        self.split_idx = split_idx
+        self.all_classes = all_classes
+        self.class_name_to_id = {class_name: i for i, class_name in enumerate(self.all_classes)}
 
         self._set_file_paths(self.paths)
         self.image_size = image_size
@@ -24,27 +28,39 @@ class Dataset_Union_ALL(Dataset):
         self.threshold = threshold
         self.mode = mode
         self.pcc = pcc
-    
+        # print(self.label_paths)
+        self.last_image = None
+        self.last_path = None
+
     def __len__(self):
         return len(self.label_paths)
 
     def __getitem__(self, index):
+        if self.image_paths[index] == self.last_path:
+            # If it is, use the last loaded image
+            nib_image = self.last_image
+        else:
+            # If not, load the new image and save it
+            nib_image = nib.load(self.image_paths[index])
+            self.last_image = nib_image
+            self.last_path = self.image_paths[index]
 
-        sitk_image = sitk.ReadImage(self.image_paths[index])
-        sitk_label = sitk.ReadImage(self.label_paths[index])
-
-        if sitk_image.GetOrigin() != sitk_label.GetOrigin():
-            sitk_image.SetOrigin(sitk_label.GetOrigin())
-        if sitk_image.GetDirection() != sitk_label.GetDirection():
-            sitk_image.SetDirection(sitk_label.GetDirection())
+        cls_classes_name = self.class_labels[index]
+        # print(cls_classes_name)
+        cls_classes_id = self.class_name_to_id[cls_classes_name]
+        # print(cls_classes_id)
+        cls_classes_id = torch.tensor(cls_classes_id, dtype=torch.long)
+        nib_label = nib.load(self.label_paths[index])
+        image_data = np.expand_dims(nib_image.get_fdata(), axis=0)
+        label_data = np.expand_dims(nib_label.get_fdata(), axis=0)
 
         subject = tio.Subject(
-            image = tio.ScalarImage.from_sitk(sitk_image),
-            label = tio.LabelMap.from_sitk(sitk_label),
+            image=tio.ScalarImage(tensor=image_data),
+            label=tio.LabelMap(tensor=label_data),
         )
 
-        if '/ct_' in self.image_paths[index]:
-            subject = tio.Clamp(-1000,1000)(subject)
+        # if '/ct_' in self.image_paths[index]:
+        subject = tio.Clamp(-1000, 1000)(subject)
 
         if self.transform:
             try:
@@ -52,63 +68,80 @@ class Dataset_Union_ALL(Dataset):
             except:
                 print(self.image_paths[index])
 
-        if(self.pcc):
+        affine = subject.label.affine
+
+        if self.pcc:
             print("using pcc setting")
             # crop from random click point
             random_index = torch.argwhere(subject.label.data == 1)
-            if(len(random_index)>=1):
+            if len(random_index) >= 1:
                 random_index = random_index[np.random.randint(0, len(random_index))]
                 # print(random_index)
                 crop_mask = torch.zeros_like(subject.label.data)
                 # print(crop_mask.shape)
                 crop_mask[random_index[0]][random_index[1]][random_index[2]][random_index[3]] = 1
                 subject.add_image(tio.LabelMap(tensor=crop_mask,
-                                                affine=subject.label.affine),
-                                    image_name="crop_mask")
-                subject = tio.CropOrPad(mask_name='crop_mask', 
-                                        target_shape=(self.image_size,self.image_size,self.image_size))(subject)
+                                               affine=subject.label.affine),
+                                  image_name="crop_mask")
+                subject = tio.CropOrPad(mask_name='crop_mask',
+                                        target_shape=(self.image_size, self.image_size, self.image_size))(subject)
 
         if subject.label.data.sum() <= self.threshold:
             return self.__getitem__(np.random.randint(self.__len__()))
-        
+
         if self.mode == "train" and self.data_type == 'Tr':
-            return subject.image.data.clone().detach(), subject.label.data.clone().detach()
+            return subject.image.data.clone().detach(), subject.label.data.clone().detach(), cls_classes_id
         else:
-            return subject.image.data.clone().detach(), subject.label.data.clone().detach(), self.image_paths[index]   
- 
+            return subject.image.data.clone().detach(), subject.label.data.clone().detach(), self.label_paths[
+                index], cls_classes_id, affine
+
     def _set_file_paths(self, paths):
         self.image_paths = []
         self.label_paths = []
+        self.class_labels = []
 
-        # if ${path}/labelsTr exists, search all .nii.gz
-        for path in paths:
-            d = os.path.join(path, f'labels{self.data_type}')
-            if os.path.exists(d):
-                for name in os.listdir(d):
-                    base = os.path.basename(name).split('.nii.gz')[0]
-                    label_path = os.path.join(path, f'labels{self.data_type}', f'{base}.nii.gz')
-                    self.image_paths.append(label_path.replace('labels', 'images'))
-                    self.label_paths.append(label_path)
+        all_dataset_paths = [os.path.join(paths, case) for case in os.listdir(paths)]
+        # 确保只包含目录
+        all_dataset_paths = [path for path in all_dataset_paths if os.path.isdir(path)]
+        for case_path in all_dataset_paths:
+            ct_path = os.path.join(case_path, 'ct.nii')
+            # segmentations_path = os.path.join(case_path, 'merged_segmentations')
+            # segmentations_path = os.path.join(case_path, 'segmentations')
+            if len(self.all_classes) == 117:
+                segmentations_path = os.path.join(case_path, 'segmentations')
+            elif len(self.all_classes) == 74:
+                segmentations_path = os.path.join(case_path, 'merged_segmentations')
+
+            if os.path.exists(segmentations_path):
+                for seg_file in os.listdir(segmentations_path):
+                    seg_path = os.path.join(segmentations_path, seg_file)
+                    self.image_paths.append(ct_path)
+                    self.label_paths.append(seg_path)
+
+                    # 假设类别信息可以从seg_file的文件名中获取
+                    class_label = self._get_class_from_filename(seg_file)
+                    self.class_labels.append(class_label)
+
+    def _get_class_from_filename(self, filename):
+        # 这是一个示例方法，你需要根据你的文件名格式来实现它
+        # 假设文件名的格式是"classname.nii.gz"
+        class_name = filename.split('.nii.gz')[0]
+        return class_name
+
 
 class Dataset_Union_ALL_Val(Dataset_Union_ALL):
     def _set_file_paths(self, paths):
         self.image_paths = []
         self.label_paths = []
+        for case_path in paths:
+            ct_path = os.path.join(case_path, 'ct.nii')
+            segmentations_path = os.path.join(case_path, 'segmentations')
 
-        # if ${path}/labelsTr exists, search all .nii.gz
-        for path in paths:
-            for dt in ["Tr", "Val", "Ts"]:
-                d = os.path.join(path, f'labels{dt}')
-                if os.path.exists(d):
-                    for name in os.listdir(d):
-                        base = os.path.basename(name).split('.nii.gz')[0]
-                        label_path = os.path.join(path, f'labels{dt}', f'{base}.nii.gz') 
-                        self.image_paths.append(label_path.replace('labels', 'images'))
-                        self.label_paths.append(label_path)
-        self.image_paths = self.image_paths[self.split_idx::self.split_num]
-        self.label_paths = self.label_paths[self.split_idx::self.split_num]
-
-
+            if os.path.exists(segmentations_path):
+                for seg_file in os.listdir(segmentations_path):
+                    seg_path = os.path.join(segmentations_path, seg_file)
+                    self.image_paths.append(ct_path)
+                    self.label_paths.append(seg_path)
 
 
 class Union_Dataloader(DataLoader):
@@ -116,7 +149,7 @@ class Union_Dataloader(DataLoader):
         return BackgroundGenerator(super().__iter__())
 
 
-class Test_Single(Dataset): 
+class Test_Single(Dataset):
     def __init__(self, paths, image_size=128, transform=None, threshold=500):
         self.paths = paths
 
@@ -124,27 +157,31 @@ class Test_Single(Dataset):
         self.image_size = image_size
         self.transform = transform
         self.threshold = threshold
-    
+
     def __len__(self):
         return len(self.label_paths)
 
     def __getitem__(self, index):
 
-        sitk_image = sitk.ReadImage(self.image_paths[index])
-        sitk_label = sitk.ReadImage(self.label_paths[index])
+        nib_image = nib.load(self.image_paths[index])
+        nib_label = nib.load(self.label_paths[index])
 
-        if sitk_image.GetOrigin() != sitk_label.GetOrigin():
-            sitk_image.SetOrigin(sitk_label.GetOrigin())
-        if sitk_image.GetDirection() != sitk_label.GetDirection():
-            sitk_image.SetDirection(sitk_label.GetDirection())
+        # 添加一个额外的维度
+        image_data = np.expand_dims(nib_image.get_fdata(), axis=0)
+        label_data = np.expand_dims(nib_label.get_fdata(), axis=0)
 
         subject = tio.Subject(
-            image = tio.ScalarImage.from_sitk(sitk_image),
-            label = tio.LabelMap.from_sitk(sitk_label),
+            image=tio.ScalarImage(tensor=image_data),
+            label=tio.LabelMap(tensor=label_data),
+        )
+
+        subject = tio.Subject(
+            image=tio.ScalarImage(tensor=nib_image.get_fdata()),
+            label=tio.LabelMap(tensor=nib_label.get_fdata()),
         )
 
         if '/ct_' in self.image_paths[index]:
-            subject = tio.Clamp(-1000,1000)(subject)
+            subject = tio.Clamp(-1000, 1000)(subject)
 
         if self.transform:
             try:
@@ -152,13 +189,11 @@ class Test_Single(Dataset):
             except:
                 print(self.image_paths[index])
 
-
         if subject.label.data.sum() <= self.threshold:
             return self.__getitem__(np.random.randint(self.__len__()))
-        
 
         return subject.image.data.clone().detach(), subject.label.data.clone().detach(), self.image_paths[index]
-    
+
     def _set_file_paths(self, paths):
         self.image_paths = []
         self.label_paths = []
@@ -167,25 +202,28 @@ class Test_Single(Dataset):
         self.label_paths.append(paths.replace('images', 'labels'))
 
 
-
 if __name__ == "__main__":
     test_dataset = Dataset_Union_ALL(
-        paths=['/cpfs01/shared/gmai/medical_preprocessed/3d/iseg/ori_totalseg_two_class/liver/Totalsegmentator_dataset_ct/',], 
-        data_type='Ts', 
+        paths=
+        '/scratch/users/k23065445/data/data/test',
+        data_type='Ts',
+        all_classes=all_classes_merged,
         transform=tio.Compose([
             tio.ToCanonical(),
-            tio.CropOrPad(mask_name='label', target_shape=(128,128,128)),
-        ]), 
+            tio.CropOrPad(mask_name='label', target_shape=(128, 128, 128)),
+        ]),
         threshold=0)
 
     test_dataloader = Union_Dataloader(
         dataset=test_dataset,
         sampler=None,
-        batch_size=1, 
-        shuffle=True
+        batch_size=16,
+        shuffle=True,
+        num_workers=80,
+        pin_memory=True
     )
-    for i,j,n in test_dataloader:
-        # print(i.shape)
-        # print(j.shape)
-        # print(n)
-        continue
+
+    for data in tqdm(test_dataloader):
+        images, labels, _, _, _ = data
+        print(f'Images: {images.shape}')
+        print(f'Labels: {labels.shape}')
