@@ -398,7 +398,7 @@ if __name__ == "__main__":
         all_iou_list.append(per_iou)
         all_dice_list.append(max(dice_list))
         print(dice_list)
-        out_dice[img_name] = max(dice_list)
+        out_dice[img_name[0]] = max(dice_list)
         cur_dice_dict = OrderedDict()
         for i, dice in enumerate(dice_list):
             cur_dice_dict[f'{i}'] = dice
