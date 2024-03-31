@@ -299,12 +299,11 @@ def finetune_model_predict3D(img3D, gt3D, sam_model_tune, device='cuda', click_m
 
 
 if __name__ == "__main__":
-    all_dataset_paths = glob(join(args.test_data_path, "*", "*"))
-    all_dataset_paths = list(filter(os.path.isdir, all_dataset_paths))
-    print("get", len(all_dataset_paths), "datasets")
+    all_dataset_paths = args.test_data_path
 
     infer_transform = [
         tio.ToCanonical(),
+        tio.Resample(target=(1.5, 1.5, 1.5)),
         tio.CropOrPad(mask_name='label', target_shape=(args.crop_size, args.crop_size, args.crop_size)),
     ]
 
