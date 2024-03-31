@@ -20,6 +20,7 @@ import json
 import pickle
 from utils.click_method import get_next_click3D_torch_ritm, get_next_click3D_torch_2
 from utils.data_loader import Dataset_Union_ALL_Val
+from utils.data_paths import all_classes, all_classes_merged
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-tdp', '--test_data_path', type=str, default='./data/validation')
@@ -309,6 +310,7 @@ if __name__ == "__main__":
 
     test_dataset = Dataset_Union_ALL_Val(
         paths=all_dataset_paths,
+        all_classes=all_classes,
         mode="Val",
         data_type=args.data_type,
         transform=tio.Compose(infer_transform),
@@ -322,7 +324,9 @@ if __name__ == "__main__":
         dataset=test_dataset,
         sampler=None,
         batch_size=1,
-        shuffle=True
+        shuffle=True,
+        num_workers=64,
+        pin_memory=True,
     )
 
     checkpoint_path = args.checkpoint_path
