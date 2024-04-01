@@ -36,6 +36,7 @@ parser.add_argument('-mt', '--model_type', type=str, default='vit_b_ori')
 parser.add_argument('-nc', '--num_clicks', type=int, default=5)
 parser.add_argument('-pm', '--point_method', type=str, default='default')
 parser.add_argument('-dt', '--data_type', type=str, default='Ts')
+parser.add_argument("--encoder_adapter", type=bool, default=True, help="use adapter")
 
 parser.add_argument('--threshold', type=int, default=0)
 parser.add_argument('--dim', type=int, default=3)
