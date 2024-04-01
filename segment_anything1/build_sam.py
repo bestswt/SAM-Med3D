@@ -17,7 +17,6 @@ def build_sam_vit_h(args):
         encoder_global_attn_indexes=[7, 15, 23, 31],
         image_size=args.image_size,
         checkpoint=args.sam_checkpoint,
-        encoder_adapter = args.encoder_adapter,
     )
 
 
@@ -32,7 +31,6 @@ def build_sam_vit_l(args):
         encoder_global_attn_indexes=[5, 11, 17, 23],
         image_size=args.image_size,
         checkpoint=args.sam_checkpoint,
-        encoder_adapter = args.encoder_adapter,
     )
 
 
@@ -44,7 +42,6 @@ def build_sam_vit_b(args):
         encoder_global_attn_indexes=[2, 5, 8, 11],
         image_size=args.image_size,
         checkpoint=args.sam_checkpoint,
-        encoder_adapter = args.encoder_adapter,
 
     )
 
@@ -64,7 +61,6 @@ def _build_sam(
     encoder_global_attn_indexes,
     image_size,
     checkpoint,
-    encoder_adapter,
 ):
     prompt_embed_dim = 256
     image_size = image_size
@@ -84,7 +80,6 @@ def _build_sam(
             global_attn_indexes=encoder_global_attn_indexes,
             window_size=14,
             out_chans=prompt_embed_dim,
-            adapter_train = encoder_adapter,
         ),
         prompt_encoder=PromptEncoder(
             embed_dim=prompt_embed_dim,
@@ -107,19 +102,15 @@ def _build_sam(
         pixel_mean=[123.675, 116.28, 103.53],
         pixel_std=[58.395, 57.12, 57.375],
     )
-    # sam.train()
+    sam.train()
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
-            state_dict = torch.load(f, map_location="cpu")
+            state_dict = torch.load(f)
         try:
             if 'model' in state_dict.keys():
-                print(encoder_adapter)
-                sam.load_state_dict(state_dict['model'], False)
+                sam.load_state_dict(state_dict['model'])
             else:
-                if image_size==1024 and encoder_adapter==True:
-                    sam.load_state_dict(state_dict, False)
-                else:
-                    sam.load_state_dict(state_dict)
+                sam.load_state_dict(state_dict)
         except:
             print('*******interpolate')
             new_state_dict = load_from(sam, state_dict, image_size, vit_patch_size)   
@@ -130,7 +121,6 @@ def _build_sam(
 
 
 def load_from(sam, state_dicts, image_size, vit_patch_size):
-
     sam_dict = sam.state_dict()
     except_keys = ['mask_tokens', 'output_hypernetworks_mlps', 'iou_prediction_head']
     new_state_dict = {k: v for k, v in state_dicts.items() if
