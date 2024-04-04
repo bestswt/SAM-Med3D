@@ -1,5 +1,5 @@
 python validation.py --seed 2023\
  -vp ./results/vis_sam_med3d \
  -cp ./ckpt/sam_med3d.pth \
- -tdp /scratch/users/k23065445/data/data/test/ -nc 10 \
+ -tdp /scratch/users/k23065445/data/data/test/ -nc 5 \
  --save_name ./results/sam_med3d.py
