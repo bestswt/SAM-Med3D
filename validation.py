@@ -6,7 +6,7 @@ from glob import glob
 import torch
 from segment_anything1.build_sam3D import sam_model_registry3D
 from segment_anything1.utils.transforms3D import ResizeLongestSide3D
-from segment_anything import sam_model_registry
+from segment_anything1 import sam_model_registry
 from tqdm import tqdm
 import argparse
 import SimpleITK as sitk
