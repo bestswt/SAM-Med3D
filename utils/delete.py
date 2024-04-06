@@ -3,6 +3,7 @@ import nibabel as nib
 from multiprocessing import Pool
 from functools import partial
 
+
 def process_file(threshold, file_path):
     try:
         mask = nib.load(file_path)
@@ -13,6 +14,7 @@ def process_file(threshold, file_path):
             return f"Deleted {file_path} due to small volume ({mask_volume})."
     except Exception as e:
         return f"Error processing {file_path}: {e}"
+
 
 def delete_small_volume_masks(root_dir, threshold):
     """
@@ -33,6 +35,7 @@ def delete_small_volume_masks(root_dir, threshold):
 
     for result in results:
         print(result)
+
 
 # Example usage
 root_directory = '/scratch/prj/inf_clinicalllm_msc/wentao_shi/data'
