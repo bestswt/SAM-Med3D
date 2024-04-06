@@ -24,7 +24,7 @@ def delete_small_volume_masks(root_dir, threshold):
     """
     file_paths = []
     for subdir, dirs, files in os.walk(root_dir):
-        if 'segmentations' in subdir:
+        if 'segmentations' or 'merged_segmentations' in subdir:
             for file in files:
                 file_paths.append(os.path.join(subdir, file))
 
