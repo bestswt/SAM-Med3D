@@ -58,7 +58,7 @@ dataset_list = [
     'WORD',
 ]
 
-target_dir = "/scratch/prj/inf_clinicalllm_msc/wentao_shi/data/word/train"
+target_dir = "/scratch/prj/inf_clinicalllm_msc/wentao_shi/data/word/test"
 
 for dataset in dataset_list:
     dataset_dir = osp.join(dataset_root, dataset)
@@ -74,11 +74,11 @@ for dataset in dataset_list:
         idx = int(idx)
         dataset_name = dataset
         target_cls_dir = osp.join(target_dir, cls_name, dataset_name)
-        target_img_dir = osp.join(target_cls_dir, "imagesTr")
-        target_gt_dir = osp.join(target_cls_dir, "labelsTr")
+        target_img_dir = osp.join(target_cls_dir, "imagesTs")
+        target_gt_dir = osp.join(target_cls_dir, "labelsTs")
         os.makedirs(target_img_dir, exist_ok=True)
         os.makedirs(target_gt_dir, exist_ok=True)
-        for item in tqdm(meta_info["training"], desc=f"{dataset_name}-{cls_name}"):
+        for item in tqdm(meta_info["testing"], desc=f"{dataset_name}-{cls_name}"):
             img, gt = item["image"], item["label"]
             img = osp.join(dataset_dir, img)
             gt = osp.join(dataset_dir, gt)
