@@ -80,15 +80,15 @@ for dataset in dataset_list:
         os.makedirs(target_gt_dir, exist_ok=True)
         for item in tqdm(meta_info["training"], desc=f"{dataset_name}-{cls_name}"):
             img, gt = item["image"], item["label"]
-            img = osp.join(dataset_dir, img.replace(".nii.gz", "_0000.nii.gz"))
+            img = osp.join(dataset_dir, img)
             gt = osp.join(dataset_dir, gt)
             resample_img = osp.join(resample_dir, osp.basename(img))
             if not osp.exists(resample_img):
                 resample_nii(img, resample_img)
             img = resample_img
 
-            target_img_path = osp.join(target_img_dir, osp.basename(img).replace("_0000.nii.gz", ".nii.gz"))
-            target_gt_path = osp.join(target_gt_dir, osp.basename(gt).replace("_0000.nii.gz", ".nii.gz"))
+            target_img_path = osp.join(target_img_dir, osp.basename(img))
+            target_gt_path = osp.join(target_gt_dir, osp.basename(gt))
 
             gt_img = nib.load(gt)
             spacing = tuple(gt_img.header['pixdim'][1:4])
