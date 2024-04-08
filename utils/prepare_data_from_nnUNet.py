@@ -53,7 +53,7 @@ def resample_nii(input_path: str, output_path: str, target_spacing: tuple = (1.5
     save_image.save(output_path)
 
 
-dataset_root = "./data"
+dataset_root = "/scratch/prj/inf_clinicalllm_msc/wentao_shi/data"
 dataset_list = [
     'WORD',
 ]
