@@ -1,11 +1,11 @@
 # -*- encoding: utf-8 -*-
-"""
+'''
 @File    :   prepare_data_from_nnUNet.py
 @Time    :   2023/12/10 23:07:39
 @Author  :   Haoyu Wang
 @Contact :   small_dark@sina.com
 @Brief   :   pre-process nnUNet-style dataset into SAM-Med3D-style
-"""
+'''
 
 import os.path as osp
 import os
@@ -14,7 +14,6 @@ import shutil
 import nibabel as nib
 from tqdm import tqdm
 import torchio as tio
-
 
 
 def resample_nii(input_path: str, output_path: str, target_spacing: tuple = (1.5, 1.5, 1.5), n=None,
@@ -32,11 +31,11 @@ def resample_nii(input_path: str, output_path: str, target_spacing: tuple = (1.5
     subject = tio.Subject(
         img=tio.ScalarImage(input_path)
     )
-    resampler = tio.Resample(target=target_spacing, image_interpolation=mode)
-    resampled_subject = resampler(subject)
+    # resampler = tio.Resample(target=target_spacing, image_interpolation=mode)
+    # resampled_subject = resampler(subject)
 
     if (n != None):
-        image = resampled_subject.img
+        image = subject.img
         tensor_data = image.data
         if (isinstance(n, int)):
             n = [n]
@@ -49,42 +48,28 @@ def resample_nii(input_path: str, output_path: str, target_spacing: tuple = (1.5
         cropper_or_padder = tio.CropOrPad(reference_size)
         save_image = cropper_or_padder(save_image)
     else:
-        save_image = resampled_subject.img
+        save_image = subject.img
 
     save_image.save(output_path)
 
 
-dataset_root = "/scratch/users/k23065445/baseline/nnUNet_raw/"
+dataset_root = "./data"
 dataset_list = [
-    'Dataset277_TotalSegmentator',
+    'WORD',
 ]
 
-target_dir = "/scratch/prj/inf_clinicalllm_msc/wentao_shi/SAM/SAM-Med3D/data/Dataset277_TotalSegmentator"
+target_dir = "/scratch/prj/inf_clinicalllm_msc/wentao_shi/data/word/train"
 
 for dataset in dataset_list:
     dataset_dir = osp.join(dataset_root, dataset)
-    training = []
-    image_files = os.listdir(os.path.join(dataset_dir, "imagesTr"))
-
-    for image_file in image_files:
-        # Construct full path to image file
-        image_path = os.path.join(dataset_dir, "imagesTr", image_file)
-
-        # Construct corresponding label file path
-        label_file = image_file  # Assuming label files have the same name as image files
-        label_path = os.path.join(dataset_dir, "labelsTr", label_file)
-
-        # Append to training list
-        training.append({"image": image_path, "label": label_path})
-
     meta_info = json.load(open(osp.join(dataset_dir, "dataset.json")))
 
-    print(meta_info['name'], meta_info['channel_names'])
+    print(meta_info['name'], meta_info['modality'])
     num_classes = len(meta_info["labels"]) - 1
     print("num_classes:", num_classes, meta_info["labels"])
     resample_dir = osp.join(dataset_dir, "imagesTr_1.5")
     os.makedirs(resample_dir, exist_ok=True)
-    for cls_name, idx in meta_info["labels"].items():
+    for idx, cls_name in meta_info["labels"].items():
         cls_name = cls_name.replace(" ", "_")
         idx = int(idx)
         dataset_name = dataset.split("_", maxsplit=1)[1]
@@ -93,10 +78,10 @@ for dataset in dataset_list:
         target_gt_dir = osp.join(target_cls_dir, "labelsTr")
         os.makedirs(target_img_dir, exist_ok=True)
         os.makedirs(target_gt_dir, exist_ok=True)
-        for item in tqdm(training, desc=f"{dataset_name}-{cls_name}"):
+        for item in tqdm(meta_info["training"], desc=f"{dataset_name}-{cls_name}"):
             img, gt = item["image"], item["label"]
-            # img = osp.join(dataset_dir, img.replace(".nii.gz", "_0000.nii.gz"))
-            gt = osp.join(dataset_dir, gt.replace("_0000.nii.gz", ".nii.gz"))
+            img = osp.join(dataset_dir, img.replace(".nii.gz", "_0000.nii.gz"))
+            gt = osp.join(dataset_dir, gt)
             resample_img = osp.join(resample_dir, osp.basename(img))
             if not osp.exists(resample_img):
                 resample_nii(img, resample_img)
@@ -122,3 +107,5 @@ for dataset in dataset_list:
             else:
                 resample_nii(gt, target_gt_path, n=idx, reference_image=reference_image, mode="nearest")
             shutil.copy(img, target_img_path)
+
+
