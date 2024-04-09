@@ -4,8 +4,8 @@ join = osp.join
 import numpy as np
 from glob import glob
 import torch
-from segment_anything.build_sam3D import sam_model_registry3D
-from segment_anything.utils.transforms3D import ResizeLongestSide3D
+from segment_anything1.build_sam3D import sam_model_registry3D
+from segment_anything1.utils.transforms3D import ResizeLongestSide3D
 from segment_anything import sam_model_registry
 from tqdm import tqdm
 import argparse
@@ -19,7 +19,7 @@ from collections import OrderedDict, defaultdict
 import json
 import pickle
 from utils.click_method import get_next_click3D_torch_ritm, get_next_click3D_torch_2
-from utils.data_loader import Dataset_Union_ALL_Val
+from utils.data_loader_orgin import Dataset_Union_ALL_Val
 from itertools import product
 
 parser = argparse.ArgumentParser()
@@ -102,7 +102,7 @@ def postprocess_masks(low_res_masks, image_size, original_size):
         pad = (top, left)
     else:
         masks = F.interpolate(masks, original_size, mode="bilinear", align_corners=False)
-        pad = None 
+        pad = None
     return masks, pad
 
 def sam_decoder_inference(target_size, points_coords, points_labels, model, image_embeddings, mask_inputs=None, multimask = False):
@@ -120,7 +120,7 @@ def sam_decoder_inference(target_size, points_coords, points_labels, model, imag
             dense_prompt_embeddings=dense_embeddings,
             multimask_output=multimask,
         )
-    
+
     if multimask:
         max_values, max_indexs = torch.max(iou_predictions, dim=1)
         max_values = max_values.unsqueeze(1)
@@ -144,7 +144,7 @@ def random_point_sampling(mask, get_point = 1):
         mask = mask.numpy()
     fg_coords = np.argwhere(mask == 1)[:,::-1]
     bg_coords = np.argwhere(mask == 0)[:,::-1]
-    
+
     fg_size = len(fg_coords)
     bg_size = len(bg_coords)
 
@@ -178,7 +178,7 @@ def finetune_model_predict2D(img3D, gt3D, sam_model_tune, target_size=256, click
     slice_mask_list = defaultdict(list)
 
     img3D = torch.repeat_interleave(img3D, repeats=3, dim=1) # 1 channel -> 3 channel (align to RGB)
-    
+
     click_points = []
     click_labels = []
     for slice_idx in tqdm(range(img3D.size(-1)), desc="transverse slices", leave=False):
@@ -192,7 +192,7 @@ def finetune_model_predict2D(img3D, gt3D, sam_model_tune, target_size=256, click
 
         img2D = F.interpolate(img2D, (target_size, target_size), mode="bilinear", align_corners=False)
         gt2D = F.interpolate(gt2D.float(), (target_size, target_size), mode="nearest").int()
-        
+
         img2D, gt2D = img2D.to(device), gt2D.to(device)
         img2D = (img2D - img2D.mean()) / img2D.std()
 
@@ -207,7 +207,7 @@ def finetune_model_predict2D(img3D, gt3D, sam_model_tune, target_size=256, click
             if(low_res_masks==None):
                 pred_masks = torch.zeros_like(true_masks).to(device)
             else:
-                pred_masks = (prev_masks[0, 0] > 0.0).to(device) 
+                pred_masks = (prev_masks[0, 0] > 0.0).to(device)
             fn_masks = torch.logical_and(true_masks, torch.logical_not(pred_masks))
             fp_masks = torch.logical_and(torch.logical_not(true_masks), pred_masks)
             mask_to_sample = torch.logical_or(fn_masks, fp_masks)
@@ -217,20 +217,20 @@ def finetune_model_predict2D(img3D, gt3D, sam_model_tune, target_size=256, click
             points_co = torch.cat([points_co, new_points_co],dim=1)
             points_la = torch.cat([points_la, new_points_la],dim=1)
             prev_masks, low_res_masks, iou_predictions = sam_decoder_inference(
-                target_size, points_co, points_la, sam_model_tune, image_embeddings, 
+                target_size, points_co, points_la, sam_model_tune, image_embeddings,
                 mask_inputs = low_res_masks, multimask = True)
             click_points.append(new_points_co)
             click_labels.append(new_points_la)
-            
+
             slice_mask, _ = postprocess_masks(low_res_masks, target_size, (gt3D.size(2), gt3D.size(3)))
             slice_mask_list[iter].append(slice_mask[..., None]) # append (B, C, H, W, 1)
-        
+
     for iter in range(num_clicks):
         medsam_seg = torch.cat(slice_mask_list[iter], dim=-1).cpu().numpy().squeeze()
         medsam_seg = medsam_seg > sam_model_tune.mask_threshold
         medsam_seg = medsam_seg.astype(np.uint8)
 
-        pred_list.append(medsam_seg) 
+        pred_list.append(medsam_seg)
 
     return pred_list, click_points, click_labels
 
@@ -257,8 +257,8 @@ def finetune_model_predict3D(img3D, gt3D, sam_model_tune, device='cuda', click_m
                 click_method = "random"
             batch_points, batch_labels = click_methods[click_method](prev_masks.to(device), gt3D.to(device))
 
-            points_co = torch.cat(batch_points, dim=0).to(device)  
-            points_la = torch.cat(batch_labels, dim=0).to(device)  
+            points_co = torch.cat(batch_points, dim=0).to(device)
+            points_la = torch.cat(batch_labels, dim=0).to(device)
 
             click_points.append(points_co)
             click_labels.append(points_la)
@@ -338,7 +338,7 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
             tio.Pad(padding_params, padding_mode=crop_transform.padding_mode),
             tio.Crop(cropping_params),
         ])
-        subject_roi = pad_and_crop(subject)  
+        subject_roi = pad_and_crop(subject)
         img3D_roi, gt3D_roi = subject_roi.image.data.clone().detach().unsqueeze(1), subject_roi.label.data.clone().detach().unsqueeze(1)
 
         # collect all position information, and set correct roi for sliding-windows in 
@@ -352,7 +352,7 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
                 windows_clip[2*i] = roi_shape[i]-offset[i]
                 windows_clip[2*i+1] = 0
         pos3D_roi = dict(
-            padding_params=padding_params, cropping_params=cropping_params, 
+            padding_params=padding_params, cropping_params=cropping_params,
             ori_roi=(
                 padding_params[0]+cropping_params[0]+windows_clip[0], cropping_params[0]+roi_shape[0]-padding_params[1]+windows_clip[1],
                 padding_params[2]+cropping_params[2]+windows_clip[2], cropping_params[2]+roi_shape[1]-padding_params[3]+windows_clip[3],
@@ -383,23 +383,23 @@ def save_numpy_to_nifti(in_arr: np.array, out_path, meta_info):
     sitk.WriteImage(out, out_path)
 
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
     all_dataset_paths = glob(join(args.test_data_path, "*", "*"))
     all_dataset_paths = list(filter(osp.isdir, all_dataset_paths))
     print("get", len(all_dataset_paths), "datasets")
 
     crop_transform = tio.CropOrPad(
-        mask_name='label', 
+        mask_name='label',
         target_shape=(args.crop_size, args.crop_size, args.crop_size))
-    
+
     infer_transform = [
         tio.ToCanonical(),
     ]
 
     test_dataset = Dataset_Union_ALL_Val(
-        paths=all_dataset_paths, 
-        mode="Val", 
-        data_type=args.data_type, 
+        paths=all_dataset_paths,
+        mode="Val",
+        data_type=args.data_type,
         transform=tio.Compose(infer_transform),
         threshold=0,
         split_num=args.split_num,
@@ -411,7 +411,7 @@ if __name__ == "__main__":
     test_dataloader = DataLoader(
         dataset=test_dataset,
         sampler=None,
-        batch_size=1, 
+        batch_size=1,
         shuffle=True
     )
 
@@ -433,7 +433,7 @@ if __name__ == "__main__":
     norm_transform = tio.ZNormalization(masking_method=lambda x: x > 0)
 
     all_iou_list = []
-    all_dice_list = []  
+    all_dice_list = []
 
     out_dice = dict()
     out_dice_all = OrderedDict()
@@ -446,20 +446,20 @@ if __name__ == "__main__":
         dataset = osp.basename(osp.dirname(osp.dirname(img_name)))
         vis_root = osp.join(args.pred_output_dir, modality, dataset)
         pred_path = osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{args.num_clicks-1}.nii.gz"))
-        
+
         ''' inference '''
         iou_list, dice_list = [], []
         if(args.skip_existing_pred and osp.exists(pred_path)):
             pass # if the pred existed, skip the inference
-        else: 
+        else:
             image3D_full, gt3D_full = image3D, gt3D
             pred3D_full_dict  = {click_idx:torch.zeros_like(gt3D_full).numpy() for click_idx in range(args.num_clicks)}
             offset_mode = "center" if(not args.sliding_window) else "rounded"
             sliding_window_list = pad_and_crop_with_sliding_window(image3D_full, gt3D_full, crop_transform, offset_mode=offset_mode)
             for (image3D, gt3D, pos3D) in sliding_window_list:
                 seg_mask_list, points, labels = finetune_model_predict3D(
-                    image3D, gt3D, sam_model_tune, device=device, 
-                    click_method=args.point_method, num_clicks=args.num_clicks, 
+                    image3D, gt3D, sam_model_tune, device=device,
+                    click_method=args.point_method, num_clicks=args.num_clicks,
                     prev_masks=None)
                 ori_roi, pred_roi = pos3D["ori_roi"], pos3D["pred_roi"]
                 for idx, seg_mask in enumerate(seg_mask_list):
@@ -476,7 +476,7 @@ if __name__ == "__main__":
             pt_info = dict(points=points, labels=labels)
             # print("save to", osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", "_pred.nii.gz")))
             pt_path=osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", "_pt.pkl"))
-            pickle.dump(pt_info, open(pt_path, "wb"))              
+            pickle.dump(pt_info, open(pt_path, "wb"))
 
             if(args.save_image_and_gt):
                 save_numpy_to_nifti(image3D_full, osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_img.nii.gz")), meta_info)
@@ -487,7 +487,7 @@ if __name__ == "__main__":
                 for pt in points[:idx+1]:
                     pred3D_full[..., pt[0,0,0]-radius:pt[0,0,0]+radius, pt[0,0,1]-radius:pt[0,0,1]+radius, pt[0,0,2]-radius:pt[0,0,2]+radius] = 10
                 save_numpy_to_nifti(pred3D_full, osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{idx}_wPt.nii.gz")), meta_info)
-                
+
         ''' metric computation '''
         for click_idx in range(args.num_clicks):
             reorient_tensor = lambda in_arr : np.transpose(in_arr.squeeze().detach().cpu().numpy(), (2, 1, 0))
