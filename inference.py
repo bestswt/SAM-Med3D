@@ -314,6 +314,10 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
     if (padding_params is None): padding_params = (0, 0, 0, 0, 0, 0)
     roi_shape = crop_transform.target_shape
     vol_bound = (0, img3D.shape[2], 0, img3D.shape[3], 0, img3D.shape[4])
+
+    resampling_ratio = np.array([1.5, 1.5, 1.5]) / np.array(subject.image.spacing)
+    cropping_params = tuple(int(param * ratio) for param, ratio in zip(cropping_params, resampling_ratio))
+
     center_oob_ori_roi = (
         cropping_params[0] - padding_params[0], cropping_params[0] + roi_shape[0] - padding_params[0],
         cropping_params[2] - padding_params[2], cropping_params[2] + roi_shape[1] - padding_params[2],
