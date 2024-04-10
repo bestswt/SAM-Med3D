@@ -1,5 +1,6 @@
 import os
 import os.path as osp
+
 join = osp.join
 import numpy as np
 from glob import glob
@@ -70,11 +71,13 @@ click_methods = {
     'random': get_next_click3D_torch_2,
 }
 
+
 def compute_iou(pred_mask, gt_semantic_seg):
     in_mask = np.logical_and(gt_semantic_seg, pred_mask)
     out_mask = np.logical_or(gt_semantic_seg, pred_mask)
     iou = np.sum(in_mask) / np.sum(out_mask)
     return iou
+
 
 def compute_dice(mask_gt, mask_pred):
     """Compute soerensen-dice coefficient.
@@ -85,7 +88,8 @@ def compute_dice(mask_gt, mask_pred):
     if volume_sum == 0:
         return np.NaN
     volume_intersect = (mask_gt & mask_pred).sum()
-    return 2*volume_intersect / volume_sum
+    return 2 * volume_intersect / volume_sum
+
 
 def postprocess_masks(low_res_masks, image_size, original_size):
     ori_h, ori_w = original_size
@@ -94,18 +98,20 @@ def postprocess_masks(low_res_masks, image_size, original_size):
         (image_size, image_size),
         mode="bilinear",
         align_corners=False,
-        )
+    )
     if args.ft2d and ori_h < image_size and ori_w < image_size:
         top = (image_size - ori_h) // 2
         left = (image_size - ori_w) // 2
-        masks = masks[..., top : ori_h + top, left : ori_w + left]
+        masks = masks[..., top: ori_h + top, left: ori_w + left]
         pad = (top, left)
     else:
         masks = F.interpolate(masks, original_size, mode="bilinear", align_corners=False)
         pad = None
     return masks, pad
 
-def sam_decoder_inference(target_size, points_coords, points_labels, model, image_embeddings, mask_inputs=None, multimask = False):
+
+def sam_decoder_inference(target_size, points_coords, points_labels, model, image_embeddings, mask_inputs=None,
+                          multimask=False):
     with torch.no_grad():
         sparse_embeddings, dense_embeddings = model.prompt_encoder(
             points=(points_coords.to(model.device), points_labels.to(model.device)),
@@ -114,8 +120,8 @@ def sam_decoder_inference(target_size, points_coords, points_labels, model, imag
         )
 
         low_res_masks, iou_predictions = model.mask_decoder(
-            image_embeddings = image_embeddings,
-            image_pe = model.prompt_encoder.get_dense_pe(),
+            image_embeddings=image_embeddings,
+            image_pe=model.prompt_encoder.get_dense_pe(),
             sparse_prompt_embeddings=sparse_embeddings,
             dense_prompt_embeddings=dense_embeddings,
             multimask_output=multimask,
@@ -127,10 +133,11 @@ def sam_decoder_inference(target_size, points_coords, points_labels, model, imag
         iou_predictions = max_values
         low_res = []
         for i, idx in enumerate(max_indexs):
-            low_res.append(low_res_masks[i:i+1, idx])
+            low_res.append(low_res_masks[i:i + 1, idx])
         low_res_masks = torch.stack(low_res, 0)
-    masks = F.interpolate(low_res_masks, (target_size, target_size), mode="bilinear", align_corners=False,)
+    masks = F.interpolate(low_res_masks, (target_size, target_size), mode="bilinear", align_corners=False, )
     return masks, low_res_masks, iou_predictions
+
 
 def repixel_value(arr, is_seg=False):
     if not is_seg:
@@ -139,11 +146,12 @@ def repixel_value(arr, is_seg=False):
         new_arr = (arr - min_val) / (max_val - min_val + 1e-10) * 255.
     return new_arr
 
-def random_point_sampling(mask, get_point = 1):
+
+def random_point_sampling(mask, get_point=1):
     if isinstance(mask, torch.Tensor):
         mask = mask.numpy()
-    fg_coords = np.argwhere(mask == 1)[:,::-1]
-    bg_coords = np.argwhere(mask == 0)[:,::-1]
+    fg_coords = np.argwhere(mask == 1)[:, ::-1]
+    bg_coords = np.argwhere(mask == 0)[:, ::-1]
 
     fg_size = len(fg_coords)
     bg_size = len(bg_coords)
@@ -168,24 +176,26 @@ def random_point_sampling(mask, get_point = 1):
         coords = np.concatenate([fg_coords, bg_coords], axis=0)
         labels = np.concatenate([np.ones(num_fg), np.zeros(num_bg)]).astype(int)
         indices = np.random.permutation(get_point)
-        coords, labels = torch.as_tensor(coords[indices], dtype=torch.float), torch.as_tensor(labels[indices], dtype=torch.int)
+        coords, labels = torch.as_tensor(coords[indices], dtype=torch.float), torch.as_tensor(labels[indices],
+                                                                                              dtype=torch.int)
         return coords, labels
 
 
-def finetune_model_predict2D(img3D, gt3D, sam_model_tune, target_size=256, click_method='random', device='cuda', num_clicks=1, prev_masks=None):
+def finetune_model_predict2D(img3D, gt3D, sam_model_tune, target_size=256, click_method='random', device='cuda',
+                             num_clicks=1, prev_masks=None):
     pred_list = []
 
     slice_mask_list = defaultdict(list)
 
-    img3D = torch.repeat_interleave(img3D, repeats=3, dim=1) # 1 channel -> 3 channel (align to RGB)
+    img3D = torch.repeat_interleave(img3D, repeats=3, dim=1)  # 1 channel -> 3 channel (align to RGB)
 
     click_points = []
     click_labels = []
     for slice_idx in tqdm(range(img3D.size(-1)), desc="transverse slices", leave=False):
         img2D, gt2D = repixel_value(img3D[..., slice_idx]), gt3D[..., slice_idx]
 
-        if (gt2D==0).all():
-            empty_result = torch.zeros(list(gt3D.size()[:-1])+[1]).to(device)
+        if (gt2D == 0).all():
+            empty_result = torch.zeros(list(gt3D.size()[:-1]) + [1]).to(device)
             for iter in range(num_clicks):
                 slice_mask_list[iter].append(empty_result)
             continue
@@ -199,12 +209,12 @@ def finetune_model_predict2D(img3D, gt3D, sam_model_tune, target_size=256, click
         with torch.no_grad():
             image_embeddings = sam_model_tune.image_encoder(img2D.float())
 
-        points_co, points_la = torch.zeros(1,0,2).to(device), torch.zeros(1,0).to(device)
+        points_co, points_la = torch.zeros(1, 0, 2).to(device), torch.zeros(1, 0).to(device)
         low_res_masks = None
         gt_semantic_seg = gt2D[0, 0].to(device)
         true_masks = (gt_semantic_seg > 0)
         for iter in range(num_clicks):
-            if(low_res_masks==None):
+            if (low_res_masks == None):
                 pred_masks = torch.zeros_like(true_masks).to(device)
             else:
                 pred_masks = (prev_masks[0, 0] > 0.0).to(device)
@@ -212,18 +222,19 @@ def finetune_model_predict2D(img3D, gt3D, sam_model_tune, target_size=256, click
             fp_masks = torch.logical_and(torch.logical_not(true_masks), pred_masks)
             mask_to_sample = torch.logical_or(fn_masks, fp_masks)
             new_points_co, _ = random_point_sampling(mask_to_sample.cpu(), get_point=1)
-            new_points_la = torch.Tensor([1]).to(torch.int64) if(true_masks[new_points_co[0,1].int(), new_points_co[0,0].int()]) else torch.Tensor([0]).to(torch.int64)
+            new_points_la = torch.Tensor([1]).to(torch.int64) if (
+            true_masks[new_points_co[0, 1].int(), new_points_co[0, 0].int()]) else torch.Tensor([0]).to(torch.int64)
             new_points_co, new_points_la = new_points_co[None].to(device), new_points_la[None].to(device)
-            points_co = torch.cat([points_co, new_points_co],dim=1)
-            points_la = torch.cat([points_la, new_points_la],dim=1)
+            points_co = torch.cat([points_co, new_points_co], dim=1)
+            points_la = torch.cat([points_la, new_points_la], dim=1)
             prev_masks, low_res_masks, iou_predictions = sam_decoder_inference(
                 target_size, points_co, points_la, sam_model_tune, image_embeddings,
-                mask_inputs = low_res_masks, multimask = True)
+                mask_inputs=low_res_masks, multimask=True)
             click_points.append(new_points_co)
             click_labels.append(new_points_la)
 
             slice_mask, _ = postprocess_masks(low_res_masks, target_size, (gt3D.size(2), gt3D.size(3)))
-            slice_mask_list[iter].append(slice_mask[..., None]) # append (B, C, H, W, 1)
+            slice_mask_list[iter].append(slice_mask[..., None])  # append (B, C, H, W, 1)
 
     for iter in range(num_clicks):
         medsam_seg = torch.cat(slice_mask_list[iter], dim=-1).cpu().numpy().squeeze()
@@ -235,8 +246,9 @@ def finetune_model_predict2D(img3D, gt3D, sam_model_tune, target_size=256, click
     return pred_list, click_points, click_labels
 
 
-def finetune_model_predict3D(img3D, gt3D, sam_model_tune, device='cuda', click_method='random', num_clicks=10, prev_masks=None):
-    img3D = norm_transform(img3D.squeeze(dim=1)) # (N, C, W, H, D)
+def finetune_model_predict3D(img3D, gt3D, sam_model_tune, device='cuda', click_method='random', num_clicks=10,
+                             prev_masks=None):
+    img3D = norm_transform(img3D.squeeze(dim=1))  # (N, C, W, H, D)
     img3D = img3D.unsqueeze(dim=1)
 
     click_points = []
@@ -246,14 +258,15 @@ def finetune_model_predict3D(img3D, gt3D, sam_model_tune, device='cuda', click_m
 
     if prev_masks is None:
         prev_masks = torch.zeros_like(gt3D).to(device)
-    low_res_masks = F.interpolate(prev_masks.float(), size=(args.crop_size//4,args.crop_size//4,args.crop_size//4))
+    low_res_masks = F.interpolate(prev_masks.float(),
+                                  size=(args.crop_size // 4, args.crop_size // 4, args.crop_size // 4))
 
     with torch.no_grad():
-        image_embedding = sam_model_tune.image_encoder(img3D.to(device)) # (1, 384, 16, 16, 16)
+        image_embedding = sam_model_tune.image_encoder(img3D.to(device))  # (1, 384, 16, 16, 16)
 
     for click_idx in range(num_clicks):
         with torch.no_grad():
-            if(click_idx>1):
+            if (click_idx > 1):
                 click_method = "random"
             batch_points, batch_labels = click_methods[click_method](prev_masks.to(device), gt3D.to(device))
 
@@ -272,12 +285,12 @@ def finetune_model_predict3D(img3D, gt3D, sam_model_tune, device='cuda', click_m
                 masks=low_res_masks.to(device),
             )
             low_res_masks, _ = sam_model_tune.mask_decoder(
-                image_embeddings=image_embedding.to(device), # (B, 384, 64, 64, 64)
-                image_pe=sam_model_tune.prompt_encoder.get_dense_pe(), # (1, 384, 64, 64, 64)
-                sparse_prompt_embeddings=sparse_embeddings, # (B, 2, 384)
-                dense_prompt_embeddings=dense_embeddings, # (B, 384, 64, 64, 64)
+                image_embeddings=image_embedding.to(device),  # (B, 384, 64, 64, 64)
+                image_pe=sam_model_tune.prompt_encoder.get_dense_pe(),  # (1, 384, 64, 64, 64)
+                sparse_prompt_embeddings=sparse_embeddings,  # (B, 2, 384)
+                dense_prompt_embeddings=dense_embeddings,  # (B, 384, 64, 64, 64)
                 multimask_output=False,
-                )
+            )
             prev_masks = F.interpolate(low_res_masks, size=gt3D.shape[-3:], mode='trilinear', align_corners=False)
 
             medsam_seg_prob = torch.sigmoid(prev_masks)  # (B, 1, 64, 64, 64)
@@ -291,47 +304,47 @@ def finetune_model_predict3D(img3D, gt3D, sam_model_tune, device='cuda', click_m
 
 def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="center"):
     subject = tio.Subject(
-        image = tio.ScalarImage(tensor=img3D.squeeze(0)),
-        label = tio.LabelMap(tensor=gt3D.squeeze(0)),
+        image=tio.ScalarImage(tensor=img3D.squeeze(0)),
+        label=tio.LabelMap(tensor=gt3D.squeeze(0)),
     )
     padding_params, cropping_params = crop_transform.compute_crop_or_pad(subject)
     # cropping_params: (x_start, x_max-(x_start+roi_size), y_start, ...)
     # padding_params: (x_left_pad, x_right_pad, y_left_pad, ...)
-    if(cropping_params is None): cropping_params = (0,0,0,0,0,0)
-    if(padding_params is None): padding_params = (0,0,0,0,0,0)
+    if (cropping_params is None): cropping_params = (0, 0, 0, 0, 0, 0)
+    if (padding_params is None): padding_params = (0, 0, 0, 0, 0, 0)
     roi_shape = crop_transform.target_shape
     vol_bound = (0, img3D.shape[2], 0, img3D.shape[3], 0, img3D.shape[4])
-    center_oob_ori_roi=(
-        cropping_params[0]-padding_params[0], cropping_params[0]+roi_shape[0]-padding_params[0],
-        cropping_params[2]-padding_params[2], cropping_params[2]+roi_shape[1]-padding_params[2],
-        cropping_params[4]-padding_params[4], cropping_params[4]+roi_shape[2]-padding_params[4],
+    center_oob_ori_roi = (
+        cropping_params[0] - padding_params[0], cropping_params[0] + roi_shape[0] - padding_params[0],
+        cropping_params[2] - padding_params[2], cropping_params[2] + roi_shape[1] - padding_params[2],
+        cropping_params[4] - padding_params[4], cropping_params[4] + roi_shape[2] - padding_params[4],
     )
     window_list = []
     offset_dict = {
-        "rounded": list(product((-32,+32,0), repeat=3)),
-        "center": [(0,0,0)],
+        "rounded": list(product((-32, +32, 0), repeat=3)),
+        "center": [(0, 0, 0)],
     }
     for offset in offset_dict[offset_mode]:
         # get the position in original volume~(allow out-of-bound) for current offset
         oob_ori_roi = (
-            center_oob_ori_roi[0]+offset[0], center_oob_ori_roi[1]+offset[0],
-            center_oob_ori_roi[2]+offset[1], center_oob_ori_roi[3]+offset[1],
-            center_oob_ori_roi[4]+offset[2], center_oob_ori_roi[5]+offset[2],
+            center_oob_ori_roi[0] + offset[0], center_oob_ori_roi[1] + offset[0],
+            center_oob_ori_roi[2] + offset[1], center_oob_ori_roi[3] + offset[1],
+            center_oob_ori_roi[4] + offset[2], center_oob_ori_roi[5] + offset[2],
         )
         # get corresponing padding params based on `vol_bound`
         padding_params = [0 for i in range(6)]
         for idx, (ori_pos, bound) in enumerate(zip(oob_ori_roi, vol_bound)):
             pad_val = 0
-            if(idx%2==0 and ori_pos<bound): # left bound
-                pad_val = bound-ori_pos
-            if(idx%2==1 and ori_pos>bound):
-                pad_val = ori_pos-bound
+            if (idx % 2 == 0 and ori_pos < bound):  # left bound
+                pad_val = bound - ori_pos
+            if (idx % 2 == 1 and ori_pos > bound):
+                pad_val = ori_pos - bound
             padding_params[idx] = pad_val
         # get corresponding crop params after padding
         cropping_params = (
-            oob_ori_roi[0]+padding_params[0], vol_bound[1]-oob_ori_roi[1]+padding_params[1],
-            oob_ori_roi[2]+padding_params[2], vol_bound[3]-oob_ori_roi[3]+padding_params[3],
-            oob_ori_roi[4]+padding_params[4], vol_bound[5]-oob_ori_roi[5]+padding_params[5],
+            oob_ori_roi[0] + padding_params[0], vol_bound[1] - oob_ori_roi[1] + padding_params[1],
+            oob_ori_roi[2] + padding_params[2], vol_bound[3] - oob_ori_roi[3] + padding_params[3],
+            oob_ori_roi[4] + padding_params[4], vol_bound[5] - oob_ori_roi[5] + padding_params[5],
         )
         # pad and crop for the original subject
         pad_and_crop = tio.Compose([
@@ -339,37 +352,42 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
             tio.Crop(cropping_params),
         ])
         subject_roi = pad_and_crop(subject)
-        img3D_roi, gt3D_roi = subject_roi.image.data.clone().detach().unsqueeze(1), subject_roi.label.data.clone().detach().unsqueeze(1)
+        img3D_roi, gt3D_roi = subject_roi.image.data.clone().detach().unsqueeze(
+            1), subject_roi.label.data.clone().detach().unsqueeze(1)
 
         # collect all position information, and set correct roi for sliding-windows in 
         # todo: get correct roi window of half because of the sliding 
         windows_clip = [0 for i in range(6)]
         for i in range(3):
-            if(offset[i]<0):
-                windows_clip[2*i] = 0
-                windows_clip[2*i+1] = -(roi_shape[i]+offset[i])
-            elif(offset[i]>0):
-                windows_clip[2*i] = roi_shape[i]-offset[i]
-                windows_clip[2*i+1] = 0
+            if (offset[i] < 0):
+                windows_clip[2 * i] = 0
+                windows_clip[2 * i + 1] = -(roi_shape[i] + offset[i])
+            elif (offset[i] > 0):
+                windows_clip[2 * i] = roi_shape[i] - offset[i]
+                windows_clip[2 * i + 1] = 0
         pos3D_roi = dict(
             padding_params=padding_params, cropping_params=cropping_params,
             ori_roi=(
-                padding_params[0]+cropping_params[0]+windows_clip[0], cropping_params[0]+roi_shape[0]-padding_params[1]+windows_clip[1],
-                padding_params[2]+cropping_params[2]+windows_clip[2], cropping_params[2]+roi_shape[1]-padding_params[3]+windows_clip[3],
-                padding_params[4]+cropping_params[4]+windows_clip[4], cropping_params[4]+roi_shape[2]-padding_params[5]+windows_clip[5],
+                padding_params[0] + cropping_params[0] + windows_clip[0],
+                cropping_params[0] + roi_shape[0] - padding_params[1] + windows_clip[1],
+                padding_params[2] + cropping_params[2] + windows_clip[2],
+                cropping_params[2] + roi_shape[1] - padding_params[3] + windows_clip[3],
+                padding_params[4] + cropping_params[4] + windows_clip[4],
+                cropping_params[4] + roi_shape[2] - padding_params[5] + windows_clip[5],
             ),
             pred_roi=(
-                padding_params[0]+windows_clip[0], roi_shape[0]-padding_params[1]+windows_clip[1],
-                padding_params[2]+windows_clip[2], roi_shape[1]-padding_params[3]+windows_clip[3],
-                padding_params[4]+windows_clip[4], roi_shape[2]-padding_params[5]+windows_clip[5],
+                padding_params[0] + windows_clip[0], roi_shape[0] - padding_params[1] + windows_clip[1],
+                padding_params[2] + windows_clip[2], roi_shape[1] - padding_params[3] + windows_clip[3],
+                padding_params[4] + windows_clip[4], roi_shape[2] - padding_params[5] + windows_clip[5],
             ))
         pred_roi = pos3D_roi["pred_roi"]
-        if((gt3D_roi[pred_roi[0]:pred_roi[1],pred_roi[2]:pred_roi[3],pred_roi[4]:pred_roi[5]]==0).all()):
-            #print("skip empty window with offset", offset)
+        if ((gt3D_roi[pred_roi[0]:pred_roi[1], pred_roi[2]:pred_roi[3], pred_roi[4]:pred_roi[5]] == 0).all()):
+            # print("skip empty window with offset", offset)
             continue
 
         window_list.append((img3D_roi, gt3D_roi, pos3D_roi))
     return window_list
+
 
 def save_numpy_to_nifti(in_arr: np.array, out_path, meta_info):
     # torchio turn 1xHxWxD -> DxWxH
@@ -394,6 +412,7 @@ if __name__ == "__main__":
 
     infer_transform = [
         tio.ToCanonical(),
+        tio.Resample(target=(1.5, 1.5, 1.5)),
     ]
 
     test_dataset = Dataset_Union_ALL_Val(
@@ -420,7 +439,7 @@ if __name__ == "__main__":
     device = args.device
     print("device:", device)
 
-    if(args.dim==3):
+    if (args.dim == 3):
         sam_model_tune = sam_model_registry3D[args.model_type](checkpoint=None).to(device)
         if checkpoint_path is not None:
             model_dict = torch.load(checkpoint_path, map_location=device)
@@ -445,17 +464,18 @@ if __name__ == "__main__":
         modality = osp.basename(osp.dirname(osp.dirname(osp.dirname(img_name))))
         dataset = osp.basename(osp.dirname(osp.dirname(img_name)))
         vis_root = osp.join(args.pred_output_dir, modality, dataset)
-        pred_path = osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{args.num_clicks-1}.nii.gz"))
+        pred_path = osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{args.num_clicks - 1}.nii.gz"))
 
         ''' inference '''
         iou_list, dice_list = [], []
-        if(args.skip_existing_pred and osp.exists(pred_path)):
-            pass # if the pred existed, skip the inference
+        if (args.skip_existing_pred and osp.exists(pred_path)):
+            pass  # if the pred existed, skip the inference
         else:
             image3D_full, gt3D_full = image3D, gt3D
-            pred3D_full_dict  = {click_idx:torch.zeros_like(gt3D_full).numpy() for click_idx in range(args.num_clicks)}
-            offset_mode = "center" if(not args.sliding_window) else "rounded"
-            sliding_window_list = pad_and_crop_with_sliding_window(image3D_full, gt3D_full, crop_transform, offset_mode=offset_mode)
+            pred3D_full_dict = {click_idx: torch.zeros_like(gt3D_full).numpy() for click_idx in range(args.num_clicks)}
+            offset_mode = "center" if (not args.sliding_window) else "rounded"
+            sliding_window_list = pad_and_crop_with_sliding_window(image3D_full, gt3D_full, crop_transform,
+                                                                   offset_mode=offset_mode)
             for (image3D, gt3D, pos3D) in sliding_window_list:
                 seg_mask_list, points, labels = finetune_model_predict3D(
                     image3D, gt3D, sam_model_tune, device=device,
@@ -463,34 +483,46 @@ if __name__ == "__main__":
                     prev_masks=None)
                 ori_roi, pred_roi = pos3D["ori_roi"], pos3D["pred_roi"]
                 for idx, seg_mask in enumerate(seg_mask_list):
-                    seg_mask_roi = seg_mask[..., pred_roi[0]:pred_roi[1], pred_roi[2]:pred_roi[3], pred_roi[4]:pred_roi[5]]
-                    pred3D_full_dict[idx][..., ori_roi[0]:ori_roi[1], ori_roi[2]:ori_roi[3], ori_roi[4]:ori_roi[5]] = seg_mask_roi
+                    seg_mask_roi = seg_mask[..., pred_roi[0]:pred_roi[1], pred_roi[2]:pred_roi[3],
+                                   pred_roi[4]:pred_roi[5]]
+                    pred3D_full_dict[idx][..., ori_roi[0]:ori_roi[1], ori_roi[2]:ori_roi[3],
+                    ori_roi[4]:ori_roi[5]] = seg_mask_roi
 
             os.makedirs(vis_root, exist_ok=True)
             padding_params = sliding_window_list[-1][-1]["padding_params"]
             cropping_params = sliding_window_list[-1][-1]["cropping_params"]
             # print(padding_params, cropping_params)
-            point_offset = np.array([cropping_params[0]-padding_params[0], cropping_params[2]-padding_params[2], cropping_params[4]-padding_params[4]])
-            points = [p.cpu().numpy()+point_offset for p in points]
+            point_offset = np.array([cropping_params[0] - padding_params[0], cropping_params[2] - padding_params[2],
+                                     cropping_params[4] - padding_params[4]])
+            points = [p.cpu().numpy() + point_offset for p in points]
             labels = [l.cpu().numpy() for l in labels]
             pt_info = dict(points=points, labels=labels)
             # print("save to", osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", "_pred.nii.gz")))
-            pt_path=osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", "_pt.pkl"))
+            pt_path = osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", "_pt.pkl"))
             pickle.dump(pt_info, open(pt_path, "wb"))
 
-            if(args.save_image_and_gt):
-                save_numpy_to_nifti(image3D_full, osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_img.nii.gz")), meta_info)
-                save_numpy_to_nifti(gt3D_full, osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_gt.nii.gz")), meta_info)
+            if (args.save_image_and_gt):
+                save_numpy_to_nifti(image3D_full,
+                                    osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_img.nii.gz")),
+                                    meta_info)
+                save_numpy_to_nifti(gt3D_full,
+                                    osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_gt.nii.gz")),
+                                    meta_info)
             for idx, pred3D_full in pred3D_full_dict.items():
-                save_numpy_to_nifti(pred3D_full, osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{idx}.nii.gz")), meta_info)
+                save_numpy_to_nifti(pred3D_full,
+                                    osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{idx}.nii.gz")),
+                                    meta_info)
                 radius = 2
-                for pt in points[:idx+1]:
-                    pred3D_full[..., pt[0,0,0]-radius:pt[0,0,0]+radius, pt[0,0,1]-radius:pt[0,0,1]+radius, pt[0,0,2]-radius:pt[0,0,2]+radius] = 10
-                save_numpy_to_nifti(pred3D_full, osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{idx}_wPt.nii.gz")), meta_info)
+                for pt in points[:idx + 1]:
+                    pred3D_full[..., pt[0, 0, 0] - radius:pt[0, 0, 0] + radius,
+                    pt[0, 0, 1] - radius:pt[0, 0, 1] + radius, pt[0, 0, 2] - radius:pt[0, 0, 2] + radius] = 10
+                save_numpy_to_nifti(pred3D_full, osp.join(vis_root, osp.basename(img_name).replace(".nii.gz",
+                                                                                                   f"_pred{idx}_wPt.nii.gz")),
+                                    meta_info)
 
         ''' metric computation '''
         for click_idx in range(args.num_clicks):
-            reorient_tensor = lambda in_arr : np.transpose(in_arr.squeeze().detach().cpu().numpy(), (2, 1, 0))
+            reorient_tensor = lambda in_arr: np.transpose(in_arr.squeeze().detach().cpu().numpy(), (2, 1, 0))
             curr_pred_path = osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{click_idx}.nii.gz"))
             medsam_seg = sitk.GetArrayFromImage(sitk.ReadImage(curr_pred_path))
             iou_list.append(round(compute_iou(medsam_seg, reorient_tensor(gt3D_full)), 4))
@@ -506,8 +538,8 @@ if __name__ == "__main__":
             cur_dice_dict[f'{i}'] = dice
         out_dice_all[img_name] = cur_dice_dict
 
-    print('Mean IoU : ', sum(all_iou_list)/len(all_iou_list))
-    print('Mean Dice: ', sum(all_dice_list)/len(all_dice_list))
+    print('Mean IoU : ', sum(all_iou_list) / len(all_iou_list))
+    print('Mean Dice: ', sum(all_dice_list) / len(all_dice_list))
 
     final_dice_dict = OrderedDict()
     for k, v in out_dice_all.items():
@@ -517,7 +549,7 @@ if __name__ == "__main__":
         organ = k.split('/')[-4]
         final_dice_dict[organ][k] = v
 
-    if(args.split_num>1):
+    if (args.split_num > 1):
         args.save_name = args.save_name.replace('.py', f'_s{args.split_num}i{args.split_idx}.py')
 
     print("Save to", args.save_name)
