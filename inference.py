@@ -412,7 +412,7 @@ if __name__ == "__main__":
 
     infer_transform = [
         tio.ToCanonical(),
-        tio.Resample(target=(1.5, 1.5, 1.5)),
+        # tio.Resample(target=(1.5, 1.5, 1.5)),
     ]
 
     test_dataset = Dataset_Union_ALL_Val(
