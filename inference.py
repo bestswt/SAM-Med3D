@@ -303,11 +303,14 @@ def finetune_model_predict3D(img3D, gt3D, sam_model_tune, device='cuda', click_m
 
 
 def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="center"):
+    # Get the current shape of the image
+    current_shape = img3D.shape[2:]
+
     subject = tio.Subject(
         image=tio.ScalarImage(tensor=img3D.squeeze(0)),
         label=tio.LabelMap(tensor=gt3D.squeeze(0)),
     )
-    padding_params, cropping_params = crop_transform.compute_crop_or_pad(subject)
+    padding_params, cropping_params = crop_transform.compute_crop_or_pad(subject, current_shape)
     # cropping_params: (x_start, x_max-(x_start+roi_size), y_start, ...)
     # padding_params: (x_left_pad, x_right_pad, y_left_pad, ...)
     if (cropping_params is None): cropping_params = (0, 0, 0, 0, 0, 0)
@@ -412,7 +415,7 @@ if __name__ == "__main__":
 
     infer_transform = [
         tio.ToCanonical(),
-        # tio.Resample(target=(1.5, 1.5, 1.5)),
+        tio.Resample(target=(1.5, 1.5, 1.5)),
     ]
 
     test_dataset = Dataset_Union_ALL_Val(
