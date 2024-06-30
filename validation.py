@@ -4,8 +4,8 @@ join = os.path.join
 import numpy as np
 from glob import glob
 import torch
-from segment_anything1.build_sam3D import sam_model_registry3D
-from segment_anything1.utils.transforms3D import ResizeLongestSide3D
+from segment_anything.build_sam3D import sam_model_registry3D
+from segment_anything.utils.transforms3D import ResizeLongestSide3D
 from segment_anything import sam_model_registry
 from tqdm import tqdm
 import argparse
