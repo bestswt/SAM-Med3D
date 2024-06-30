@@ -46,7 +46,7 @@ class Sam(nn.Module):
     @property
     def device(self) -> Any:
         return self.pixel_mean.device
- 
+
     def forward(self, batched_input: Dict[str, Any], multimask_output: bool) -> List[Dict[str, torch.Tensor]]:
 
         input_images = batched_input.get("image")

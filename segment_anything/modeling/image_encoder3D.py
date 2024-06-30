@@ -10,16 +10,44 @@ import torch.nn.functional as F
 
 from typing import Optional, Tuple, Type
 
-from .common import LayerNorm2d, MLPBlock
+
+class MLPBlock(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        mlp_dim: int,
+        act: Type[nn.Module] = nn.GELU,
+    ) -> None:
+        super().__init__()
+        self.lin1 = nn.Linear(embedding_dim, mlp_dim)
+        self.lin2 = nn.Linear(mlp_dim, embedding_dim)
+        self.act = act()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.lin2(self.act(self.lin1(x)))
+    
+class LayerNorm3d(nn.Module):
+    def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(num_channels))
+        self.bias = nn.Parameter(torch.zeros(num_channels))
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        u = x.mean(1, keepdim=True)
+        s = (x - u).pow(2).mean(1, keepdim=True)
+        x = (x - u) / torch.sqrt(s + self.eps)
+        x = self.weight[:, None, None, None] * x + self.bias[:, None, None, None]
+        return x
 
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
-class ImageEncoderViT(nn.Module):
+class ImageEncoderViT3D(nn.Module):
     def __init__(
         self,
-        img_size: int = 1024,
+        img_size: int = 256,
         patch_size: int = 16,
-        in_chans: int = 3,
+        in_chans: int = 1,
         embed_dim: int = 768,
         depth: int = 12,
         num_heads: int = 12,
@@ -55,9 +83,9 @@ class ImageEncoderViT(nn.Module):
         super().__init__()
         self.img_size = img_size
 
-        self.patch_embed = PatchEmbed(
-            kernel_size=(patch_size, patch_size),
-            stride=(patch_size, patch_size),
+        self.patch_embed = PatchEmbed3D(
+            kernel_size=(patch_size, patch_size, patch_size),
+            stride=(patch_size, patch_size, patch_size),
             in_chans=in_chans,
             embed_dim=embed_dim,
         )
@@ -66,13 +94,12 @@ class ImageEncoderViT(nn.Module):
         if use_abs_pos:
             # Initialize absolute positional embedding with pretrain image size.
             self.pos_embed = nn.Parameter(
-                torch.zeros(1, img_size // patch_size, img_size // patch_size, embed_dim)
+                torch.zeros(1, img_size // patch_size, img_size // patch_size, img_size // patch_size, embed_dim)
             )
-
 
         self.blocks = nn.ModuleList()
         for i in range(depth):
-            block = Block(
+            block = Block3D(
                 dim=embed_dim,
                 num_heads=num_heads,
                 mlp_ratio=mlp_ratio,
@@ -82,43 +109,49 @@ class ImageEncoderViT(nn.Module):
                 use_rel_pos=use_rel_pos,
                 rel_pos_zero_init=rel_pos_zero_init,
                 window_size=window_size if i not in global_attn_indexes else 0,
-                input_size=(img_size // patch_size, img_size // patch_size),
+                input_size=(img_size // patch_size, img_size // patch_size, img_size // patch_size),
             )
             self.blocks.append(block)
 
         self.neck = nn.Sequential(
-            nn.Conv2d(
+            nn.Conv3d(
                 embed_dim,
                 out_chans,
                 kernel_size=1,
                 bias=False,
             ),
-            LayerNorm2d(out_chans),
-            nn.Conv2d(
+            # nn.LayerNorm(out_chans),
+            LayerNorm3d(out_chans),
+            nn.Conv3d(
                 out_chans,
                 out_chans,
                 kernel_size=3,
                 padding=1,
                 bias=False,
             ),
-            LayerNorm2d(out_chans),
+            LayerNorm3d(out_chans),
+            # nn.LayerNorm(out_chans),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # input_size = [1,1,256,256,256]
+        # import IPython; IPython.embed()
         x = self.patch_embed(x)
+        # x = [1,16,16,16,768]
+        # import pdb; pdb.set_trace()
         if self.pos_embed is not None:
             x = x + self.pos_embed
 
         for blk in self.blocks:
             x = blk(x)
+        # x = [1,16,16,16,768]
+        x = self.neck(x.permute(0, 4, 1, 2, 3))
 
-
-        x = self.neck(x.permute(0, 3, 1, 2))
-
+        # output_size = [1,256,16,16,16]
         return x
 
 
-class Block(nn.Module):
+class Block3D(nn.Module):
     """Transformer blocks with support of window attention and residual propagation blocks"""
 
     def __init__(
@@ -132,7 +165,7 @@ class Block(nn.Module):
         use_rel_pos: bool = False,
         rel_pos_zero_init: bool = True,
         window_size: int = 0,
-        input_size: Optional[Tuple[int, int]] = None,
+        input_size: Optional[Tuple[int, int, int]] = None,
     ) -> None:
         """
         Args:
@@ -157,7 +190,7 @@ class Block(nn.Module):
             qkv_bias=qkv_bias,
             use_rel_pos=use_rel_pos,
             rel_pos_zero_init=rel_pos_zero_init,
-            input_size=input_size if window_size == 0 else (window_size, window_size),
+            input_size=input_size if window_size == 0 else (window_size, window_size, window_size),
         )
 
         self.norm2 = norm_layer(dim)
@@ -170,13 +203,13 @@ class Block(nn.Module):
         x = self.norm1(x)
         # Window partition
         if self.window_size > 0:
-            H, W = x.shape[1], x.shape[2]
-            x, pad_hw = window_partition(x, self.window_size)
+            D, H, W = x.shape[1], x.shape[2], x.shape[3]
+            x, pad_dhw = window_partition3D(x, self.window_size)
 
         x = self.attn(x)
         # Reverse window partition
         if self.window_size > 0:
-            x = window_unpartition(x, self.window_size, pad_hw, (H, W))
+            x = window_unpartition3D(x, self.window_size, pad_dhw, (D, H, W))
 
         x = shortcut + x
         x = x + self.mlp(self.norm2(x))
@@ -194,7 +227,7 @@ class Attention(nn.Module):
         qkv_bias: bool = True,
         use_rel_pos: bool = False,
         rel_pos_zero_init: bool = True,
-        input_size: Optional[Tuple[int, int]] = None,
+        input_size: Optional[Tuple[int, int, int]] = None,
     ) -> None:
         """
         Args:
@@ -220,29 +253,30 @@ class Attention(nn.Module):
                 input_size is not None
             ), "Input size must be provided if using relative positional encoding."
             # initialize relative positional embeddings
-            self.rel_pos_h = nn.Parameter(torch.zeros(2 * input_size[0] - 1, head_dim))
-            self.rel_pos_w = nn.Parameter(torch.zeros(2 * input_size[1] - 1, head_dim))
+            self.rel_pos_d = nn.Parameter(torch.zeros(2 * input_size[0] - 1, head_dim))
+            self.rel_pos_h = nn.Parameter(torch.zeros(2 * input_size[1] - 1, head_dim))
+            self.rel_pos_w = nn.Parameter(torch.zeros(2 * input_size[2] - 1, head_dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, H, W, _ = x.shape
+        B, D, H, W, _ = x.shape
         # qkv with shape (3, B, nHead, H * W, C)
-        qkv = self.qkv(x).reshape(B, H * W, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(B, D * H * W, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
         # q, k, v with shape (B * nHead, H * W, C)
-        q, k, v = qkv.reshape(3, B * self.num_heads, H * W, -1).unbind(0)
+        q, k, v = qkv.reshape(3, B * self.num_heads, D * H * W, -1).unbind(0)
 
         attn = (q * self.scale) @ k.transpose(-2, -1)
 
         if self.use_rel_pos:
-            attn = add_decomposed_rel_pos(attn, q, self.rel_pos_h, self.rel_pos_w, (H, W), (H, W))
+            attn = add_decomposed_rel_pos(attn, q, self.rel_pos_d, self.rel_pos_h, self.rel_pos_w, (D, H, W), (D, H, W))
 
         attn = attn.softmax(dim=-1)
-        x = (attn @ v).view(B, self.num_heads, H, W, -1).permute(0, 2, 3, 1, 4).reshape(B, H, W, -1)
+        x = (attn @ v).view(B, self.num_heads, D, H, W, -1).permute(0, 2, 3, 4, 1, 5).reshape(B, D, H, W, -1)
         x = self.proj(x)
 
         return x
 
 
-def window_partition(x: torch.Tensor, window_size: int) -> Tuple[torch.Tensor, Tuple[int, int]]:
+def window_partition3D(x: torch.Tensor, window_size: int) -> Tuple[torch.Tensor, Tuple[int, int, int]]:
     """
     Partition into non-overlapping windows with padding if needed.
     Args:
@@ -253,21 +287,23 @@ def window_partition(x: torch.Tensor, window_size: int) -> Tuple[torch.Tensor, T
         windows: windows after partition with [B * num_windows, window_size, window_size, C].
         (Hp, Wp): padded height and width before partition
     """
-    B, H, W, C = x.shape
+    B, D, H, W, C = x.shape
 
+    pad_d = (window_size - D % window_size) % window_size
     pad_h = (window_size - H % window_size) % window_size
     pad_w = (window_size - W % window_size) % window_size
-    if pad_h > 0 or pad_w > 0:
-        x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h))
-    Hp, Wp = H + pad_h, W + pad_w
+    
+    if pad_h > 0 or pad_w > 0 or pad_d > 0:
+        x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h, 0, pad_d))
+    Hp, Wp, Dp = H + pad_h, W + pad_w, D + pad_d
 
-    x = x.view(B, Hp // window_size, window_size, Wp // window_size, window_size, C)
-    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
-    return windows, (Hp, Wp)
+    x = x.view(B, Dp // window_size, window_size, Hp // window_size, window_size, Wp // window_size, window_size, C)
+    windows = x.permute(0, 1, 3, 5, 2, 4, 6, 7).contiguous().view(-1, window_size, window_size, window_size, C)
+    return windows, (Dp, Hp, Wp)
 
 
-def window_unpartition(
-    windows: torch.Tensor, window_size: int, pad_hw: Tuple[int, int], hw: Tuple[int, int]
+def window_unpartition3D(
+    windows: torch.Tensor, window_size: int, pad_dhw: Tuple[int, int, int], dhw: Tuple[int, int, int]
 ) -> torch.Tensor:
     """
     Window unpartition into original sequences and removing padding.
@@ -280,14 +316,14 @@ def window_unpartition(
     Returns:
         x: unpartitioned sequences with [B, H, W, C].
     """
-    Hp, Wp = pad_hw
-    H, W = hw
-    B = windows.shape[0] // (Hp * Wp // window_size // window_size)
-    x = windows.view(B, Hp // window_size, Wp // window_size, window_size, window_size, -1)
-    x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, Hp, Wp, -1)
+    Dp, Hp, Wp = pad_dhw
+    D, H, W = dhw
+    B = windows.shape[0] // (Dp * Hp * Wp // window_size // window_size // window_size)
+    x = windows.view(B, Dp // window_size, Hp // window_size, Wp // window_size, window_size, window_size, window_size, -1)
+    x = x.permute(0, 1, 4, 2, 5, 3, 6, 7).contiguous().view(B, Dp, Hp, Wp, -1)
 
-    if Hp > H or Wp > W:
-        x = x[:, :H, :W, :].contiguous()
+    if Hp > H or Wp > W or Dp > D:
+        x = x[:, :D, :H, :W, :].contiguous()
     return x
 
 
@@ -327,10 +363,11 @@ def get_rel_pos(q_size: int, k_size: int, rel_pos: torch.Tensor) -> torch.Tensor
 def add_decomposed_rel_pos(
     attn: torch.Tensor,
     q: torch.Tensor,
+    rel_pos_d: torch.Tensor,
     rel_pos_h: torch.Tensor,
     rel_pos_w: torch.Tensor,
-    q_size: Tuple[int, int],
-    k_size: Tuple[int, int],
+    q_size: Tuple[int, int, int],
+    k_size: Tuple[int, int, int],
 ) -> torch.Tensor:
     """
     Calculate decomposed Relative Positional Embeddings from :paper:`mvitv2`.
@@ -346,38 +383,40 @@ def add_decomposed_rel_pos(
     Returns:
         attn (Tensor): attention map with added relative positional embeddings.
     """
-    q_h, q_w = q_size
-    k_h, k_w = k_size
+    q_d, q_h, q_w = q_size
+    k_d, k_h, k_w = k_size
+
+    Rd = get_rel_pos(q_d, k_d, rel_pos_d)
     Rh = get_rel_pos(q_h, k_h, rel_pos_h)
     Rw = get_rel_pos(q_w, k_w, rel_pos_w)
-
-    B, _, dim = q.shape
-    r_q = q.reshape(B, q_h, q_w, dim)
-
-    # r_q = r_q.to(torch.float) #todo   opt_level="O2" 模式下需要注释
-    r_q = r_q.to(Rh.dtype) #todo
     
-    rel_h = torch.einsum("bhwc,hkc->bhwk", r_q, Rh)
-    rel_w = torch.einsum("bhwc,wkc->bhwk", r_q, Rw)
+    B, _, dim = q.shape
+    r_q = q.reshape(B, q_d, q_h, q_w, dim)
 
+    rel_d = torch.einsum("bdhwc,dkc->bdhwk", r_q, Rd)
+    rel_h = torch.einsum("bdhwc,hkc->bdhwk", r_q, Rh)
+    rel_w = torch.einsum("bdhwc,wkc->bdhwk", r_q, Rw)
+    
+
+    
     attn = (
-        attn.view(B, q_h, q_w, k_h, k_w) + rel_h[:, :, :, :, None] + rel_w[:, :, :, None, :]
-    ).view(B, q_h * q_w, k_h * k_w)
+        attn.view(B, q_d, q_h, q_w, k_d, k_h, k_w) + rel_d[:, :, :, :, None, None] + rel_h[:, :, :, None, :, None] + rel_w[:, :, :,None,None, :]
+    ).view(B, q_d * q_h * q_w, k_d * k_h * k_w)
 
     return attn
 
 
-class PatchEmbed(nn.Module):
+class PatchEmbed3D(nn.Module):
     """
     Image to Patch Embedding.
     """
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int] = (16, 16),
-        stride: Tuple[int, int] = (16, 16),
-        padding: Tuple[int, int] = (0, 0),
-        in_chans: int = 3,
+        kernel_size: Tuple[int, int] = (16, 16, 16),
+        stride: Tuple[int, int] = (16, 16, 16),
+        padding: Tuple[int, int] = (0, 0, 0),
+        in_chans: int = 1,
         embed_dim: int = 768,
     ) -> None:
         """
@@ -386,16 +425,18 @@ class PatchEmbed(nn.Module):
             stride (Tuple): stride of the projection layer.
             padding (Tuple): padding size of the projection layer.
             in_chans (int): Number of input image channels.
-            embed_dim (int):  embed_dim (int): Patch embedding dimension.
+            embed_dim (int): Patch embedding dimension.
         """
         super().__init__()
 
-        self.proj = nn.Conv2d(
+        self.proj = nn.Conv3d(
             in_chans, embed_dim, kernel_size=kernel_size, stride=stride, padding=padding
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.proj(x)
-        # B C H W -> B H W C
-        x = x.permute(0, 2, 3, 1)
+        # B C X Y Z -> B X Y Z C
+        x = x.permute(0, 2, 3, 4, 1)
         return x
+
+
