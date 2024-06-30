@@ -315,8 +315,8 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
     roi_shape = crop_transform.target_shape
     vol_bound = (0, img3D.shape[2], 0, img3D.shape[3], 0, img3D.shape[4])
 
-    resampling_ratio = np.array([1.5, 1.5, 1.5]) / np.array(subject.image.spacing)
-    cropping_params = tuple(int(param * ratio) for param, ratio in zip(cropping_params, resampling_ratio))
+    # resampling_ratio = np.array([1.5, 1.5, 1.5]) / np.array(subject.image.spacing)
+    # cropping_params = tuple(int(param * ratio) for param, ratio in zip(cropping_params, resampling_ratio))
 
     center_oob_ori_roi = (
         cropping_params[0] - padding_params[0], cropping_params[0] + roi_shape[0] - padding_params[0],
@@ -416,7 +416,7 @@ if __name__ == "__main__":
 
     infer_transform = [
         tio.ToCanonical(),
-        tio.Resample(target=(1.5, 1.5, 1.5)),
+        # tio.Resample(target=(1.5, 1.5, 1.5)),
     ]
 
     test_dataset = Dataset_Union_ALL_Val(

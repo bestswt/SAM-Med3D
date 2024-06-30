@@ -3,7 +3,7 @@ img_datas = [
 ]
 
 img_test_datas = [
-    '/scratch/users/k23065445/data/data/test/',
+    '/scratch/prj/inf_clinicalllm_msc/wentao_shi/data/data/test/',
 ]
 
 all_classes = [
