@@ -3,7 +3,7 @@ python inference.py --seed 2024\
  -tdp /scratch/prj/inf_clinicalllm_msc/wentao_shi/data/data/demo/ -nc 1 \
  --output_dir ./results  \
  --task_name test \
- --save_image_and_gt \
+# --save_image_and_gt \
 
 
 
