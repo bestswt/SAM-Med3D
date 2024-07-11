@@ -432,7 +432,12 @@ if __name__ == "__main__":
         dataset=test_dataset,
         sampler=None,
         batch_size=1,
-        shuffle=True
+        shuffle=False,
+        num_workers=16,
+        pin_memory=True,
+
+
+
     )
 
     checkpoint_path = args.checkpoint_path
