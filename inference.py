@@ -393,6 +393,7 @@ def save_numpy_to_nifti(in_arr: np.array, out_path, affine):
     # so we need to squeeze and transpose back to HxWxD
     ori_arr = np.transpose(in_arr.squeeze(), (2, 1, 0))
     out = nib.Nifti1Image(ori_arr, affine[0])
+    print(ori_arr.shape)
     nib.save(out, out_path)
     # out = sitk.GetImageFromArray(ori_arr)
     # sitk_meta_translator = lambda x: [float(i) for i in x]
@@ -519,6 +520,7 @@ if __name__ == "__main__":
                 save_numpy_to_nifti(pred3D_full,
                                     osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_pred{idx}.nii.gz")),
                                     affine)
+                # print(pred3D_full)
                 radius = 2
                 for pt in points[:idx + 1]:
                     pred3D_full[..., pt[0, 0, 0] - radius:pt[0, 0, 0] + radius,
