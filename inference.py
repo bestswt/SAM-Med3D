@@ -461,10 +461,10 @@ if __name__ == "__main__":
     for batch_data in tqdm(test_dataloader):
         image3D, gt3D, img_name, class_id, affine = batch_data
 
-        modality = osp.basename(osp.dirname(osp.dirname(osp.dirname(img_name))))
-        dataset = osp.basename(osp.dirname(osp.dirname(img_name)))
+        modality = osp.basename(osp.dirname(osp.dirname(osp.dirname(img_name[0]))))
+        dataset = osp.basename(osp.dirname(osp.dirname(img_name[0])))
         vis_root = osp.join(args.pred_output_dir, modality, dataset)
-        pred_path = osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{args.num_clicks - 1}.nii.gz"))
+        pred_path = osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_pred{args.num_clicks - 1}.nii.gz"))
 
         ''' inference '''
         iou_list, dice_list = [], []
@@ -498,32 +498,32 @@ if __name__ == "__main__":
             labels = [l.cpu().numpy() for l in labels]
             pt_info = dict(points=points, labels=labels)
             # print("save to", osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", "_pred.nii.gz")))
-            pt_path = osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", "_pt.pkl"))
+            pt_path = osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", "_pt.pkl"))
             pickle.dump(pt_info, open(pt_path, "wb"))
 
             if (args.save_image_and_gt):
                 save_numpy_to_nifti(image3D_full,
-                                    osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_img.nii.gz")),
-                                    meta_info)
+                                    osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_img.nii.gz")),
+                                    affine)
                 save_numpy_to_nifti(gt3D_full,
-                                    osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_gt.nii.gz")),
-                                    meta_info)
+                                    osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_gt.nii.gz")),
+                                    affine)
             for idx, pred3D_full in pred3D_full_dict.items():
                 save_numpy_to_nifti(pred3D_full,
-                                    osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{idx}.nii.gz")),
-                                    meta_info)
+                                    osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_pred{idx}.nii.gz")),
+                                    affine)
                 radius = 2
                 for pt in points[:idx + 1]:
                     pred3D_full[..., pt[0, 0, 0] - radius:pt[0, 0, 0] + radius,
                     pt[0, 0, 1] - radius:pt[0, 0, 1] + radius, pt[0, 0, 2] - radius:pt[0, 0, 2] + radius] = 10
-                save_numpy_to_nifti(pred3D_full, osp.join(vis_root, osp.basename(img_name).replace(".nii.gz",
+                save_numpy_to_nifti(pred3D_full, osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz",
                                                                                                    f"_pred{idx}_wPt.nii.gz")),
-                                    meta_info)
+                                    affine)
 
         ''' metric computation '''
         for click_idx in range(args.num_clicks):
             reorient_tensor = lambda in_arr: np.transpose(in_arr.squeeze().detach().cpu().numpy(), (2, 1, 0))
-            curr_pred_path = osp.join(vis_root, osp.basename(img_name).replace(".nii.gz", f"_pred{click_idx}.nii.gz"))
+            curr_pred_path = osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_pred{click_idx}.nii.gz"))
             medsam_seg = sitk.GetArrayFromImage(sitk.ReadImage(curr_pred_path))
             iou_list.append(round(compute_iou(medsam_seg, reorient_tensor(gt3D_full)), 4))
             dice_list.append(round(compute_dice(reorient_tensor(gt3D_full), medsam_seg), 4))
@@ -532,11 +532,11 @@ if __name__ == "__main__":
         all_iou_list.append(per_iou)
         all_dice_list.append(max(dice_list))
         print(dice_list)
-        out_dice[img_name] = max(dice_list)
+        out_dice[img_name[0]] = max(dice_list)
         cur_dice_dict = OrderedDict()
         for i, dice in enumerate(dice_list):
             cur_dice_dict[f'{i}'] = dice
-        out_dice_all[img_name] = cur_dice_dict
+        out_dice_all[img_name[0]] = cur_dice_dict
 
     print('Mean IoU : ', sum(all_iou_list) / len(all_iou_list))
     print('Mean Dice: ', sum(all_dice_list) / len(all_dice_list))
