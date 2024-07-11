@@ -519,12 +519,12 @@ if __name__ == "__main__":
                 save_numpy_to_nifti(pred3D_full, osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz",
                                                                                                    f"_pred{idx}_wPt.nii.gz")),
                                     affine)
-                print(pred3D_full.shape)
-                print(gt3D_full.shape)
+                # print(pred3D_full.shape)
+                # print(gt3D_full.shape)
 
         ''' metric computation '''
         for click_idx in range(args.num_clicks):
-            reorient_tensor = lambda in_arr: np.transpose(in_arr.squeeze().detach().cpu().numpy(), (2, 1, 0))
+            reorient_tensor = lambda in_arr: np.transpose(in_arr.squeeze().detach().cpu().numpy(), (0, 1, 2))
             curr_pred_path = osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_pred{click_idx}.nii.gz"))
             medsam_seg = sitk.GetArrayFromImage(sitk.ReadImage(curr_pred_path))
             iou_list.append(round(compute_iou(medsam_seg, reorient_tensor(gt3D_full)), 4))
