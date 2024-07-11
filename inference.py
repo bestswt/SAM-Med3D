@@ -519,6 +519,8 @@ if __name__ == "__main__":
                 save_numpy_to_nifti(pred3D_full, osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz",
                                                                                                    f"_pred{idx}_wPt.nii.gz")),
                                     affine)
+                print(pred3D_full.shape)
+                print(gt3D_full.shape)
 
         ''' metric computation '''
         for click_idx in range(args.num_clicks):
