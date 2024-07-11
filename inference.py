@@ -392,7 +392,7 @@ def save_numpy_to_nifti(in_arr: np.array, out_path, affine):
     # torchio turn 1xHxWxD -> DxWxH
     # so we need to squeeze and transpose back to HxWxD
 
-    in_arr = in_arr.astype(np.float32)
+    in_arr = in_arr.dtype("float32")
     ori_arr = np.transpose(in_arr.squeeze(), (0, 1, 2))
     out = nib.Nifti1Image(ori_arr, np.eye(4))
     # print(affine[0])
