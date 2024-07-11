@@ -536,7 +536,7 @@ if __name__ == "__main__":
         for click_idx in range(args.num_clicks):
             reorient_tensor = lambda in_arr: np.transpose(in_arr.squeeze().detach().cpu().numpy(), (0, 1, 2))
             curr_pred_path = osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_pred{click_idx}.nii.gz"))
-            medsam_seg = sitk.GetArrayFromImage(sitk.ReadImage(curr_pred_path))
+            medsam_seg = nib.load(curr_pred_path).get_fdata()
             iou_list.append(round(compute_iou(medsam_seg, reorient_tensor(gt3D_full)), 4))
             dice_list.append(round(compute_dice(reorient_tensor(gt3D_full), medsam_seg), 4))
 
