@@ -22,6 +22,7 @@ from utils.click_method import get_next_click3D_torch_ritm, get_next_click3D_tor
 from utils.data_loader import Dataset_Union_ALL_Val, Dataset_Union_ALL
 from itertools import product
 from utils.data_paths import all_classes, all_classes_merged
+import nibabel as nib
 
 
 parser = argparse.ArgumentParser()
@@ -387,16 +388,19 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
     return window_list
 
 
-def save_numpy_to_nifti(in_arr: np.array, out_path, meta_info):
+def save_numpy_to_nifti(in_arr: np.array, out_path, affine):
     # torchio turn 1xHxWxD -> DxWxH
     # so we need to squeeze and transpose back to HxWxD
     ori_arr = np.transpose(in_arr.squeeze(), (2, 1, 0))
-    out = sitk.GetImageFromArray(ori_arr)
-    sitk_meta_translator = lambda x: [float(i) for i in x]
-    out.SetOrigin(sitk_meta_translator(meta_info["origin"]))
-    out.SetDirection(sitk_meta_translator(meta_info["direction"]))
-    out.SetSpacing(sitk_meta_translator(meta_info["spacing"]))
-    sitk.WriteImage(out, out_path)
+    out = nib.Nifti1Image(ori_arr, affine[0])
+    nib.save(out, out_path)
+    # out = sitk.GetImageFromArray(ori_arr)
+    # sitk_meta_translator = lambda x: [float(i) for i in x]
+    # out.SetOrigin(sitk_meta_translator(meta_info["origin"]))
+    # out.SetDirection(sitk_meta_translator(meta_info["direction"]))
+    # out.SetSpacing(sitk_meta_translator(meta_info["spacing"]))
+
+    # sitk.WriteImage(out, out_path)
 
 
 if __name__ == "__main__":
@@ -455,8 +459,7 @@ if __name__ == "__main__":
     out_dice_all = OrderedDict()
 
     for batch_data in tqdm(test_dataloader):
-        image3D, gt3D, meta_info = batch_data
-        img_name = meta_info["image_path"][0]
+        image3D, gt3D, img_name, class_id, affine = batch_data
 
         modality = osp.basename(osp.dirname(osp.dirname(osp.dirname(img_name))))
         dataset = osp.basename(osp.dirname(osp.dirname(img_name)))
