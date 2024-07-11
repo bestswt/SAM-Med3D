@@ -5,12 +5,11 @@ join = osp.join
 import numpy as np
 from glob import glob
 import torch
-from segment_anything1.build_sam3D import sam_model_registry3D
-from segment_anything1.utils.transforms3D import ResizeLongestSide3D
+from segment_anything.build_sam3D import sam_model_registry3D
+from segment_anything.utils.transforms3D import ResizeLongestSide3D
 from segment_anything import sam_model_registry
 from tqdm import tqdm
 import argparse
-import SimpleITK as sitk
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import SimpleITK as sitk
@@ -20,8 +19,10 @@ from collections import OrderedDict, defaultdict
 import json
 import pickle
 from utils.click_method import get_next_click3D_torch_ritm, get_next_click3D_torch_2
-from utils.data_loader_orgin import Dataset_Union_ALL_Val
+from utils.data_loader import Dataset_Union_ALL_Val, Dataset_Union_ALL
 from itertools import product
+from utils.data_paths import all_classes, all_classes_merged
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-tdp', '--test_data_path', type=str, default='./data/validation')
@@ -79,15 +80,11 @@ def compute_iou(pred_mask, gt_semantic_seg):
     return iou
 
 
-def compute_dice(mask_gt, mask_pred):
-    """Compute soerensen-dice coefficient.
-    Returns:
-    the dice coeffcient as float. If both masks are empty, the result is NaN
-    """
+def compute_dice(mask_gt, mask_pred, dtype=np.uint8):
     volume_sum = mask_gt.sum() + mask_pred.sum()
     if volume_sum == 0:
         return np.NaN
-    volume_intersect = (mask_gt & mask_pred).sum()
+    volume_intersect = (mask_gt.astype(dtype) & mask_pred.astype(dtype)).sum()
     return 2 * volume_intersect / volume_sum
 
 
@@ -314,10 +311,6 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
     if (padding_params is None): padding_params = (0, 0, 0, 0, 0, 0)
     roi_shape = crop_transform.target_shape
     vol_bound = (0, img3D.shape[2], 0, img3D.shape[3], 0, img3D.shape[4])
-
-    # resampling_ratio = np.array([1.5, 1.5, 1.5]) / np.array(subject.image.spacing)
-    # cropping_params = tuple(int(param * ratio) for param, ratio in zip(cropping_params, resampling_ratio))
-
     center_oob_ori_roi = (
         cropping_params[0] - padding_params[0], cropping_params[0] + roi_shape[0] - padding_params[0],
         cropping_params[2] - padding_params[2], cropping_params[2] + roi_shape[1] - padding_params[2],
@@ -359,8 +352,8 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
         img3D_roi, gt3D_roi = subject_roi.image.data.clone().detach().unsqueeze(
             1), subject_roi.label.data.clone().detach().unsqueeze(1)
 
-        # collect all position information, and set correct roi for sliding-windows in 
-        # todo: get correct roi window of half because of the sliding 
+        # collect all position information, and set correct roi for sliding-windows in
+        # todo: get correct roi window of half because of the sliding
         windows_clip = [0 for i in range(6)]
         for i in range(3):
             if (offset[i] < 0):
@@ -372,12 +365,12 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
         pos3D_roi = dict(
             padding_params=padding_params, cropping_params=cropping_params,
             ori_roi=(
-                padding_params[0] + cropping_params[0] + windows_clip[0],
-                cropping_params[0] + roi_shape[0] - padding_params[1] + windows_clip[1],
-                padding_params[2] + cropping_params[2] + windows_clip[2],
-                cropping_params[2] + roi_shape[1] - padding_params[3] + windows_clip[3],
-                padding_params[4] + cropping_params[4] + windows_clip[4],
-                cropping_params[4] + roi_shape[2] - padding_params[5] + windows_clip[5],
+                cropping_params[0] + windows_clip[0],
+                cropping_params[0] + roi_shape[0] - padding_params[0] - padding_params[1] + windows_clip[1],
+                cropping_params[2] + windows_clip[2],
+                cropping_params[2] + roi_shape[1] - padding_params[2] - padding_params[3] + windows_clip[3],
+                cropping_params[4] + windows_clip[4],
+                cropping_params[4] + roi_shape[2] - padding_params[4] - padding_params[5] + windows_clip[5],
             ),
             pred_roi=(
                 padding_params[0] + windows_clip[0], roi_shape[0] - padding_params[1] + windows_clip[1],
@@ -385,9 +378,10 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
                 padding_params[4] + windows_clip[4], roi_shape[2] - padding_params[5] + windows_clip[5],
             ))
         pred_roi = pos3D_roi["pred_roi"]
-        if ((gt3D_roi[pred_roi[0]:pred_roi[1], pred_roi[2]:pred_roi[3], pred_roi[4]:pred_roi[5]] == 0).all()):
-            # print("skip empty window with offset", offset)
-            continue
+
+        # if((gt3D_roi[pred_roi[0]:pred_roi[1],pred_roi[2]:pred_roi[3],pred_roi[4]:pred_roi[5]]==0).all()):
+        # print("skip empty window with offset", offset)
+        #    continue
 
         window_list.append((img3D_roi, gt3D_roi, pos3D_roi))
     return window_list
@@ -406,9 +400,7 @@ def save_numpy_to_nifti(in_arr: np.array, out_path, meta_info):
 
 
 if __name__ == "__main__":
-    all_dataset_paths = glob(join(args.test_data_path, "*", "*"))
-    all_dataset_paths = list(filter(osp.isdir, all_dataset_paths))
-    print("get", len(all_dataset_paths), "datasets")
+    all_dataset_paths = args.test_data_path
 
     crop_transform = tio.CropOrPad(
         mask_name='label',
@@ -419,16 +411,17 @@ if __name__ == "__main__":
         # tio.Resample(target=(1.5, 1.5, 1.5)),
     ]
 
-    test_dataset = Dataset_Union_ALL_Val(
+    test_dataset = Dataset_Union_ALL(
         paths=all_dataset_paths,
-        mode="Val",
+        all_classes=all_classes,
+        mode="train",
         data_type=args.data_type,
         transform=tio.Compose(infer_transform),
-        threshold=0,
+        threshold=1,
         split_num=args.split_num,
         split_idx=args.split_idx,
         pcc=False,
-        get_all_meta_info=True,
+        # get_all_meta_info=True,
     )
 
     test_dataloader = DataLoader(
@@ -443,7 +436,7 @@ if __name__ == "__main__":
     device = args.device
     print("device:", device)
 
-    if (args.dim == 3):
+    if args.dim == 3:
         sam_model_tune = sam_model_registry3D[args.model_type](checkpoint=None).to(device)
         if checkpoint_path is not None:
             model_dict = torch.load(checkpoint_path, map_location=device)
