@@ -516,9 +516,9 @@ if __name__ == "__main__":
                 save_numpy_to_nifti(image3D_full,
                                     osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_img.nii.gz")),
                                     affine)
-                # save_numpy_to_nifti(gt3D_full,
-                #                     osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_gt.nii.gz")),
-                #                     affine)
+                save_numpy_to_nifti(gt3D_full,
+                                    osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_gt.nii.gz")),
+                                    affine)
             for idx, pred3D_full in pred3D_full_dict.items():
                 save_numpy_to_nifti(pred3D_full,
                                     osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_pred{idx}.nii.gz")),
