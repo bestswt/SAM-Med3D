@@ -4,5 +4,5 @@ python inference.py --seed 2024\
  --output_dir ./results  \
  --task_name infer_ours_117_1 \
  --skip_existing_pred \
- --sliding_window \
+# --sliding_window \
 # --save_image_and_gt \
