@@ -68,7 +68,7 @@ class Dataset_Union_ALL(Dataset):
             except:
                 print(self.image_paths[index])
 
-        affine = subject.label.affine
+        affine = nib_image.affine
 
         if self.pcc:
             print("using pcc setting")
