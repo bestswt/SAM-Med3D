@@ -391,8 +391,8 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
 def save_numpy_to_nifti(in_arr: np.array, out_path, affine):
     # torchio turn 1xHxWxD -> DxWxH
     # so we need to squeeze and transpose back to HxWxD
-    ori_arr = np.transpose(in_arr.squeeze(), (2, 1, 0))
-    out = nib.Nifti1Image(ori_arr, affine[0])
+    ori_arr = np.transpose(in_arr.squeeze(), (0, 1, 2))
+    out = nib.Nifti1Image(ori_arr, np.eye(4))
     print(ori_arr.shape)
     nib.save(out, out_path)
     # out = sitk.GetImageFromArray(ori_arr)
@@ -413,7 +413,7 @@ if __name__ == "__main__":
 
     infer_transform = [
         tio.ToCanonical(),
-        tio.Resample(target=(1.5, 1.5, 1.5)),
+        # tio.Resample(target=(1.5, 1.5, 1.5)),
     ]
 
     test_dataset = Dataset_Union_ALL(
