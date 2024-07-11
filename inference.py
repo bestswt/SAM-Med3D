@@ -393,6 +393,7 @@ def save_numpy_to_nifti(in_arr: np.array, out_path, affine):
     # so we need to squeeze and transpose back to HxWxD
     ori_arr = np.transpose(in_arr.squeeze(), (2, 1, 0))
     out = nib.Nifti1Image(ori_arr, affine[0])
+    print(affine[0])
     # print(ori_arr.shape)
     nib.save(out, out_path)
     # out = sitk.GetImageFromArray(ori_arr)
