@@ -392,8 +392,8 @@ def save_numpy_to_nifti(in_arr: np.array, out_path, affine):
     # torchio turn 1xHxWxD -> DxWxH
     # so we need to squeeze and transpose back to HxWxD
     ori_arr = np.transpose(in_arr.squeeze(), (0, 1, 2))
-    out = nib.Nifti1Image(ori_arr, affine[0])
-    print(affine[0])
+    out = nib.Nifti1Image(ori_arr, np.eye(4))
+    # print(affine[0])
     # print(ori_arr.shape)
     nib.save(out, out_path)
     # out = sitk.GetImageFromArray(ori_arr)
@@ -510,13 +510,13 @@ if __name__ == "__main__":
             pt_path = osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", "_pt.pkl"))
             pickle.dump(pt_info, open(pt_path, "wb"))
 
-            if (args.save_image_and_gt):
+            if args.save_image_and_gt:
                 save_numpy_to_nifti(image3D_full,
                                     osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_img.nii.gz")),
                                     affine)
-                save_numpy_to_nifti(gt3D_full,
-                                    osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_gt.nii.gz")),
-                                    affine)
+                # save_numpy_to_nifti(gt3D_full,
+                #                     osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_gt.nii.gz")),
+                #                     affine)
             for idx, pred3D_full in pred3D_full_dict.items():
                 save_numpy_to_nifti(pred3D_full,
                                     osp.join(vis_root, osp.basename(img_name[0]).replace(".nii.gz", f"_pred{idx}.nii.gz")),
