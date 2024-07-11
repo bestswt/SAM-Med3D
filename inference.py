@@ -463,7 +463,9 @@ if __name__ == "__main__":
     out_dice = dict()
     out_dice_all = OrderedDict()
 
-    for batch_data in tqdm(test_dataloader):
+    pbar = tqdm(test_dataloader)
+
+    for batch_data in pbar:
         image3D, gt3D, img_name, class_id, affine = batch_data
 
         modality = osp.basename(osp.dirname(osp.dirname(osp.dirname(img_name[0]))))
@@ -538,7 +540,7 @@ if __name__ == "__main__":
         per_iou = max(iou_list)
         all_iou_list.append(per_iou)
         all_dice_list.append(max(dice_list))
-        print(dice_list)
+        pbar.set_postfix({"Dice List": dice_list})
         out_dice[img_name[0]] = max(dice_list)
         cur_dice_dict = OrderedDict()
         for i, dice in enumerate(dice_list):
