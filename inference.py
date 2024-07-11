@@ -391,7 +391,7 @@ def pad_and_crop_with_sliding_window(img3D, gt3D, crop_transform, offset_mode="c
 def save_numpy_to_nifti(in_arr: np.array, out_path, affine):
     # torchio turn 1xHxWxD -> DxWxH
     # so we need to squeeze and transpose back to HxWxD
-    ori_arr = np.transpose(in_arr.squeeze(), (2, 1, 0))
+    ori_arr = np.transpose(in_arr.squeeze(), (0, 1, 2))
     out = nib.Nifti1Image(ori_arr, affine[0])
     print(affine[0])
     # print(ori_arr.shape)
