@@ -3,6 +3,10 @@ python inference.py --seed 2024\
  -tdp /scratch/prj/inf_clinicalllm_msc/wentao_shi/data/data/demo/ -nc 1 \
  --output_dir ./results  \
  --task_name test \
-# --skip_existing_pred \
+ --save_image_and_gt \
+
+
+
+
+ # --skip_existing_pred \
 # --sliding_window \
-# --save_image_and_gt \
